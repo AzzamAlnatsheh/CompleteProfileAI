@@ -1,29 +1,10 @@
-# ==========================================
-# CompleteProfile AI - Core Requirements
-# ==========================================
-
-# --- Web User Interface ---
-gradio>=5.0.0
-
-# --- OpenAI API & Configurations ---
+streamlit
 openai>=1.0.0
 python-dotenv>=1.0.0
-
-# --- Image Manipulations & Compositing ---
 Pillow>=10.0.0
 numpy>=1.24.0
 requests>=2.31.0
-
-# --- Lightweight ML CPU Implementations ---
-# Configured specifically for free CPU container bounds
---find-links https://download.pytorch.org/whl/cpu
-torch==2.0.1+cpu; sys_platform != 'darwin'
-torchvision==0.15.2+cpu; sys_platform != 'darwin'
-
-# Native Apple Silicon compatibility for local macOS developers
-torch==2.0.1; sys_platform == 'darwin'
-torchvision==0.15.2; sys_platform == 'darwin'
-
-# Hugging Face model hub endpoints
 transformers>=4.38.0
 huggingface-hub>=0.19.0
+torch
+torchvision
