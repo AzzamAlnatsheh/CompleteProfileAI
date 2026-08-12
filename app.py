@@ -27,6 +27,13 @@ os.environ["MKL_NUM_THREADS"] = "1"
 import torch
 from torchvision import transforms
 
+# --- Smart Google GenAI SDK Import ---
+try:
+    from google import genai
+    from google.genai import types
+except ImportError:
+    pass
+
 # --- Initialize Session State for AI Text Persistence ---
 if "headline" not in st.session_state:
     st.session_state.headline = ""
@@ -146,14 +153,14 @@ def create_gradient_backdrop(style="neutral_gray", size=(1024, 1024)):
     for y in range(height):
         ratio = y / height
         r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-        g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-        b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
+        g = int(color1 * (1 - ratio) + color2 * ratio)
+        b = int(color1 * (1 - ratio) + color2 * ratio)
         for x in range(width):
             base.putpixel((x, y), (r, g, b))
     return base
 
 def generate_fallback_banner(industry, color_palette_name):
-    """Generates a beautiful geometric abstract banner programmatically if the FLUX API is offline."""
+    """Generates a beautiful geometric abstract banner programmatically if the APIs are offline."""
     size = (1584, 396)
     image = Image.new("RGB", size)
     draw = ImageDraw.Draw(image)
@@ -168,8 +175,8 @@ def generate_fallback_banner(industry, color_palette_name):
     for y in range(396):
         ratio = y / 396
         r = int(c1[0] * (1 - ratio) + c2[0] * ratio)
-        g = int(c1[1] * (1 - ratio) + c2[1] * ratio)
-        b = int(c1[2] * (1 - ratio) + c2[2] * ratio)
+        g = int(c1 * (1 - ratio) + c2 * ratio)
+        b = int(c1 * (1 - ratio) + c2 * ratio)
         draw.line([(0, y), (1584, y)], fill=(r, g, b))
 
     random.seed(hash(industry))
@@ -349,55 +356,92 @@ def process_headshot(image, bg_type, gradient_preset, solid_color):
         background.paste(cut_subject, (0, 0), cut_subject)
         return background
 
-# --- Prompt Pack Constructor for FLUX ---
-def optimize_banner_prompt_with_gpt(inputs):
-    """Uses GPT-4o-mini to convert structured conversational details into a strict spatial FLUX prompt."""
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        return f"A high-quality 16:9 banner with top 35% and bottom 35% empty space. The middle 30% contains: corporate headline '{inputs.get('headline')}', tagline '{inputs.get('tagline')}', CTA '{inputs.get('cta')}', and brand colors {inputs.get('colors')}."
-
-    from openai import OpenAI
-    client = OpenAI(api_key=api_key)
-
-    system_prompt = """You are an elite prompt engineer for AI image generators (such as FLUX.1-schnell).
-
-Your task is to write a single, highly detailed, visually clear prompt that structures a wide 16:9 canvas to be crop-ready for LinkedIn's 1584x396 aspect ratio.
-
-You MUST strictly enforce these visual boundaries in the final generated prompt:
-1. Top 35% of the image canvas: Must be a completely solid, blank empty background with absolutely no text, icons, or graphical elements.
-2. Bottom 35% of the image canvas: Must be a completely solid, blank empty background with absolutely no text, icons, or graphical elements.
-3. Middle 30% horizontal strip: Squeeze all content (graphics, text, buttons, subjects) exclusively into this vertical center strip.
-4. Left-to-right element placement within the middle 30% strip:
-   * Call To Action (CTA) Button: Precise high contrast button anchored in the top-left section of this strip, positioned above the subject's shoulder.
-   * Profile Portrait: Located center-left of the strip, depicting a professional photographic-style portrait of the user matching their description. Ensure it remains a realistic photograph with no cartoon effects.
-   * Text Elements (Headline and Tagline): Positioned cleanly on the right side of the strip. Headline on top in strong readable typography, Tagline directly underneath in a secondary smaller font.
-   * Social Proof: Small, clean rows of stats or modern vector partner logos on the bottom-right.
-   * Background Pattern: Dynamic geometric shapes, subtle lines, or professional gradient blending matching the requested brand colors. Ensure background elements are subtle enough to guarantee legible text.
-
-Output ONLY the final prompt string with no preambles, introductory talk, or wrapping markdown code blocks."""
-
-    user_prompt = f"""Generate a structured FLUX prompt matching these specifications:
-* Primary Headline: "{inputs.get('headline')}"
-* Secondary Tagline: "{inputs.get('tagline')}"
-* CTA Text: "{inputs.get('cta')}"
-* Social Proof/Stats: "{inputs.get('social_proof')}"
-* Brand Colors: "{inputs.get('colors')}"
-* User Photo & Modifications: "{inputs.get('photo_description')}"
-"""
+# --- Multimodal Banner Generation Engine: Nano Banana 2 ---
+def generate_banner_with_gemini(inputs, uploaded_image):
+    """Generates the banner image using gemini-3.1-flash-image (Nano Banana 2) with multimodal inputs."""
+    gemini_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or os.environ.get("OPENAI_API_KEY")
+    if not gemini_key:
+        logger.error("Gemini/Google API Key is missing.")
+        return None
 
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            timeout=20
+        from google import genai
+        from google.genai import types
+        
+        client = genai.Client(api_key=gemini_key)
+        
+        # Act as a professional LinkedIn Banner Designer prompt mapping
+        prompt = f"""
+Act as a professional LinkedIn Banner Designer.
+
+Your goal is to generate a high-converting, visually vibrant, and professional LinkedIn banner that fits the 1584 x 396 pixel dimension perfectly. The design should be dynamic and stand out.
+
+Because you cannot generate this exact aspect ratio, you must generate a Wide (16:9) image, but you must concentrate the design into a thin horizontal strip in the absolute vertical center of the canvas.
+
+To ensure the user can crop this correctly:
+1. The top 35% of the image must be empty background color.
+2. The bottom 35% of the image must be empty background color.
+3. All content (Text, CTA, Face) must be squeezed into the middle 30% strip.
+
+Details to customize the design:
+1. Primary Headline: "{inputs.get('headline')}"
+2. Secondary Tagline: "{inputs.get('tagline')}"
+3. Call to Action (CTA) text: "{inputs.get('cta')}"
+4. Social Proof, stats, or client logos: "{inputs.get('social_proof')}"
+5. Brand Colors (Hex codes or descriptions): "{inputs.get('colors')}"
+6. Photographic Subject: Use the attached user photo and apply these professional changes to the appearance: "{inputs.get('photo_description')}"
+
+Layout Rules (Applied ONLY to the middle 30% of the image):
+1. CTA Placement (Strict): The CTA button must be anchored precisely in the top-left corner of the central strip. It should be positioned high up, above the level of the subject's shoulder.
+2. Subject Appearance (Realistic & Professional): Place the modified user photo in the center-left of the strip. Apply the requested changes but maintain a high-quality, realistic photographic style. Do NOT apply cartoon filters.
+3. Headline and Tagline: Place the Headline on the right side of the strip, with the Tagline directly below it. Keep the text compact.
+4. Social Proof: Place logos or stats in a small, clean row at the bottom-right of the strip.
+5. Background (Vibrant & Geometric): Do not use a plain, flat background. Create a dynamic and modern background using your brand colors. Incorporate subtle geometric shapes, abstract lines, or a professional gradient pattern to add depth, energy, and a high-end feel. Ensure these background elements are subtle enough behind the text to maintain perfect legibility.
+"""
+        
+        contents = [prompt]
+        if uploaded_image is not None:
+            # Downscale input slightly for safety before sending over network
+            w, h = uploaded_image.size
+            if w > 800 or h > 800:
+                uploaded_image.thumbnail((800, 800))
+            contents.append(uploaded_image)
+            
+        logger.info("Sending multimodal request to gemini-3.1-flash-image (Nano Banana 2)...")
+        
+        response = client.models.generate_content(
+            model='gemini-3.1-flash-image',
+            contents=contents,
+            config=types.GenerateContentConfig(
+                response_modalities=['TEXT', 'IMAGE'],
+                image_config=types.ImageConfig(
+                    aspect_ratio="16:9",
+                    image_size="1K"
+                )
+            )
         )
-        return response.choices[0].message.content.strip()
+        
+        # Parse the response to extract generated image bytes
+        image_bytes = None
+        for candidate in response.candidates:
+            for part in candidate.content.parts:
+                if part.inline_data and part.inline_data.data:
+                    image_bytes = part.inline_data.data
+                    break
+            if image_bytes:
+                break
+                
+        if image_bytes:
+            banner_img = Image.open(io.BytesIO(image_bytes))
+            # Resize the 16:9 output to standard LinkedIn Dimensions (1584 x 396)
+            return banner_img.resize((1584, 396), Image.Resampling.LANCZOS)
+        else:
+            logger.warning("No image data found in Nano Banana 2 response parts.")
+            return None
+            
     except Exception as e:
-        logger.error(f"Error optimizing banner prompt: {e}")
-        return f"A high-quality 16:9 banner with top 35% and bottom 35% empty solid background. The middle 30% horizontal strip contains a professional headshot on the left, headline '{inputs.get('headline')}' and tagline '{inputs.get('tagline')}' on the right, and CTA button '{inputs.get('cta')}', with geometric abstract background in colors {inputs.get('colors')}."
+        logger.error(f"Error during Nano Banana 2 generation: {e}")
+        return None
 
 # --- STREAMLIT UI DESIGN ---
 st.set_page_config(page_title="CompleteProfile AI", layout="wide")
@@ -485,14 +529,12 @@ with tab3:
     st.write("### 🎨 Interactive Banner Designer Chatbot")
     st.write("Collaborate step-by-step with our virtual design assistant to generate a perfectly formatted, crop-ready LinkedIn banner.")
 
-    # 1. Render Scrollable Conversational Thread
+    # 1. Render Scrollable Conversational Thread (Kept purely textual for UX)
     chat_container = st.container()
     with chat_container:
         for msg in st.session_state.banner_messages:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
-                if "image" in msg and msg["image"] is not None:
-                    st.image(msg["image"], caption="Generated Banner Output", width=400)
 
     # 2. Sequential Chat Steps State Machine
     step = st.session_state.banner_step
@@ -549,6 +591,7 @@ with tab3:
         col_img, col_desc = st.columns(2)
 
         with col_img:
+            # We assign this to the session state explicitly via the key parameter
             banner_headshot = st.file_uploader("Upload Headshot Photo", type=["jpg", "png", "jpeg"], key="banner_headshot")
         with col_desc:
             photo_edits = st.text_area(
@@ -588,7 +631,7 @@ with tab3:
             st.markdown(f"**Palette:** {st.session_state.banner_inputs.get('colors')}")
             st.markdown(f"**Photo Changes:** {st.session_state.banner_inputs.get('photo_description')}")
 
-        col_btn1, col_btn2 = st.columns([1, 4])
+        col_btn1, col_btn2 = st.columns()
         with col_btn1:
             btn_generate = st.button("🎨 Generate Banner", type="primary")
         with col_btn2:
@@ -601,39 +644,28 @@ with tab3:
                 ]
                 st.session_state.banner_step = 1
                 st.session_state.banner_inputs = {}
+                if "last_generated_banner" in st.session_state:
+                    del st.session_state.last_generated_banner
+                if "last_generated_banner_pil" in st.session_state:
+                    del st.session_state.last_generated_banner_pil
                 st.rerun()
 
         if btn_generate:
-            with st.spinner("Collaborating with the visual artist engine..."):
-                # 1. Optimize the FLUX prompt via GPT-4o-mini
-                flux_prompt = optimize_banner_prompt_with_gpt(st.session_state.banner_inputs)
-                logger.info(f"Generated optimized spatial prompt for FLUX: {flux_prompt}")
-
-                # 2. Call the Hugging Face Inference FLUX Endpoint
-                api_url = "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell"
-                hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HF_API_KEY")
-                headers = {"Authorization": f"Bearer {hf_token}"} if hf_token else {}
-
-                payload = {
-                    "inputs": flux_prompt,
-                    "parameters": {"width": 1024, "height": 576} # Standard 16:9 aspect ratio
-                }
-
-                banner_img = None
-                start_banner_time = time.time()
-                try:
-                    response = requests.post(api_url, headers=headers, json=payload, timeout=45)
-                    if response.status_code == 200:
-                        banner_img = Image.open(io.BytesIO(response.content))
-                        log_api_transaction("HF-Flux-Schnell", "success", (time.time() - start_banner_time) * 1000)
-                    else:
-                        log_api_transaction("HF-Flux-Schnell", "non_200_failure", (time.time() - start_banner_time) * 1000, {"status_code": response.status_code})
-                except Exception as e:
-                    log_api_transaction("HF-Flux-Schnell", "exception_failure", (time.time() - start_banner_time) * 1000, {"error": str(e)})
-
+            with st.spinner("Collaborating with the visual artist engine (Nano Banana 2)..."):
+                # Load the uploaded file if present
+                uploaded_image = None
+                if "banner_headshot" in st.session_state and st.session_state.banner_headshot is not None:
+                    try:
+                        uploaded_image = Image.open(st.session_state.banner_headshot)
+                    except Exception as img_err:
+                        logger.error(f"Failed to open uploaded banner headshot: {img_err}")
+                
+                # Generate banner using gemini-3.1-flash-image
+                banner_img = generate_banner_with_gemini(st.session_state.banner_inputs, uploaded_image)
+                
                 # Check if fallback is required
                 if banner_img is None:
-                    # Fall back to procedural generation
+                    logger.warning("Gemini generation failed. Executing fallback canvas generator.")
                     banner_img = generate_fallback_banner(
                         st.session_state.banner_inputs.get("headline", "Professional"),
                         "Corporate Blue"
@@ -647,20 +679,28 @@ with tab3:
                 # Add final confirmation block to conversation history
                 st.session_state.banner_messages.append({
                     "role": "assistant",
-                    "content": "🎨 Here is your custom-designed, centered LinkedIn banner! Since AI generators cannot output LinkedIn's custom dimensions natively, this image has been output as a wide 16:9 canvas with all elements concentrated within the center 30% horizontal strip. \n\n**To Crop:** Simply upload this image to your LinkedIn profile and crop out the top and bottom solid background elements to fit the 1584 x 396 container perfectly!",
-                    "image": banner_img
+                    "content": "🎨 Your banner generation process is complete! The custom-designed 16:9 banner has been rendered below, outside the chat panel. Please scroll down to review and download your file."
                 })
 
                 # Keep active session state image bytes for rendering download button
                 st.session_state.last_generated_banner = byte_banner
+                st.session_state.last_generated_banner_pil = banner_img
                 st.rerun()
 
-# 3. Render persistent download button if a banner has been generated
-if "last_generated_banner" in st.session_state:
-    st.write("---")
-    st.download_button(
-        label="📥 Download LinkedIn Banner Image (PNG)",
-        data=st.session_state.last_generated_banner,
-        file_name="linkedin_custom_banner_16_9.png",
-        mime="image/png"
-    )
+    # 3. Persistent Banner Display at the very bottom of Tab 3 (Fixes UI/UX layout)
+    if "last_generated_banner_pil" in st.session_state:
+        st.write("---")
+        st.write("### 🖼️ Your Custom LinkedIn Banner")
+        st.image(
+            st.session_state.last_generated_banner_pil, 
+            caption="Custom Banner (Scaled to LinkedIn standard 1584 x 396 px on a 16:9 crop-ready canvas)", 
+            width="stretch"
+        )
+        
+        # Download button
+        st.download_button(
+            label="📥 Download LinkedIn Banner Image (PNG)",
+            data=st.session_state.last_generated_banner,
+            file_name="linkedin_custom_banner_16_9.png",
+            mime="image/png"
+        )
