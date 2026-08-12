@@ -4,7 +4,7 @@ CompleteProfile AI - Streamlit Edition (Production-Grade Portfolio Version)
 An all-in-one digital career assistant that helps job seekers build fully
 optimized LinkedIn profiles from scratch using Streamlit, OpenAI, and BiRefNet.
 
-Author: Azzam Alnatsheh
+Author: Azzam Alnatsheh (aalnatsheh@npc.qa)
 License: MIT
 """
 
@@ -20,244 +20,211 @@ import numpy as np
 import streamlit as st
 from PIL import Image, ImageDraw
 
-Ensure PyTorch CPU constraints for limited-RAM hosting environments
-
+# Ensure PyTorch CPU constraints for limited-RAM hosting environments
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 
 import torch
 from torchvision import transforms
 
---- Initialize Session State for AI Text Persistence ---
-
+# --- Initialize Session State for AI Text Persistence ---
 if "headline" not in st.session_state:
-st.session_state.headline = ""
+    st.session_state.headline = ""
 if "summary" not in st.session_state:
-st.session_state.summary = ""
+    st.session_state.summary = ""
 if "keywords" not in st.session_state:
-st.session_state.keywords = []
+    st.session_state.keywords = []
 
---- Initialize Session State for Interactive Banner Chat ---
-
+# --- Initialize Session State for Interactive Banner Chat ---
 if "banner_messages" not in st.session_state:
-st.session_state.banner_messages = [
-{
-"role": "assistant",
-"content": "Hello! I am your professional LinkedIn Banner Designer. I will help you design a high-converting, visually vibrant, and professional LinkedIn banner centered within a crop-ready 16:9 canvas.\n\nTo begin, please tell me: 1. What is your Primary Headline?"
-}
-]
+    st.session_state.banner_messages = [
+        {
+            "role": "assistant",
+            "content": "Hello! I am your professional **LinkedIn Banner Designer**. I will help you design a high-converting, visually vibrant, and professional LinkedIn banner centered within a crop-ready 16:9 canvas.\n\nTo begin, please tell me: **1. What is your Primary Headline?**"
+        }
+    ]
 if "banner_step" not in st.session_state:
-st.session_state.banner_step = 1
+    st.session_state.banner_step = 1
 if "banner_inputs" not in st.session_state:
-st.session_state.banner_inputs = {}
+    st.session_state.banner_inputs = {}
 
---- Logging Configuration ---
-
+# --- Logging Configuration ---
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("CompleteProfileAI")
 
---- Smart Hardware Allocation (CPU / CUDA / MPS) ---
-
+# --- Smart Hardware Allocation (CPU / CUDA / MPS) ---
 DEVICE = "cpu"
 if torch.cuda.is_available():
-DEVICE = "cuda"
+    DEVICE = "cuda"
 elif torch.backends.mps.is_available():
-DEVICE = "mps" # Leverages GPU acceleration on local macOS Apple Silicon developers
+    DEVICE = "mps" # Leverages GPU acceleration on local macOS Apple Silicon developers
 
---- Cache Model in Streamlit (Crucial for 512MB RAM bounds!) ---
-
+# --- Cache Model in Streamlit (Crucial for 512MB RAM bounds!) ---
 @st.cache_resource
 def load_birefnet():
-try:
-from transformers import AutoModelForImageSegmentation
-logger.info(f"Initializing BiRefNet Segmentation Weights on {DEVICE.upper()}...")
-model = AutoModelForImageSegmentation.from_pretrained(
-"ZhengPeng7/BiRefNet",
-trust_remote_code=True
-)
-model.to(DEVICE)
-model.float() # Force float32 precision to prevent datatype mismatch on CPU devices
-model.eval()
-logger.info("BiRefNet successfully compiled and cached in-memory.")
-return model
-except Exception as e:
-logger.error(f"Error loading local BiRefNet: {e}. Activating transparent fallback.")
-return None
+    try:
+        from transformers import AutoModelForImageSegmentation
+        logger.info(f"Initializing BiRefNet Segmentation Weights on {DEVICE.upper()}...")
+        model = AutoModelForImageSegmentation.from_pretrained(
+            "ZhengPeng7/BiRefNet",
+            trust_remote_code=True
+        )
+        model.to(DEVICE)
+        model.float() # Force float32 precision to prevent datatype mismatch on CPU devices
+        model.eval()
+        logger.info("BiRefNet successfully compiled and cached in-memory.")
+        return model
+    except Exception as e:
+        logger.error(f"Error loading local BiRefNet: {e}. Activating transparent fallback.")
+        return None
 
 BIREFNET_MODEL = load_birefnet()
 
---- THE CONTEXT LAYER: Local Few-Shot Knowledge Base ---
-
+# --- THE CONTEXT LAYER: Local Few-Shot Knowledge Base ---
 INDUSTRY_KNOWLEDGE_BASE = {
-"Tech & Software": {
-"keywords": ["Software Engineering", "Agile Methodologies", "CI/CD Pipelines", "System Architecture", "API Integration", "Full-Stack Development"],
-"example_input": "I code in Python and React. I built a ticketing system at my last job that helped our support team solve issues faster.",
-"example_headline": "Software Engineer | Python & React Specialist | Building High-Performance Web Applications",
-"example_summary": "I am a Full-Stack Software Engineer specializing in building scalable web applications with Python and React. I thrive on translating complex logic into clean, robust code.\n\nIn my previous role, I took ownership of designing and launching an in-house ticketing system. This system successfully streamlined cross-department communication, enabling our support team to resolve customer issues 30% faster.\n\nSpecialties: Python, JavaScript (React.js), Database Design (SQL), API Integration, and Agile Methodologies."
-},
-"Finance & Corporate": {
-"keywords": ["Financial Modeling", "Risk Management", "Data-Driven Analysis", "Regulatory Compliance", "Portfolio Optimization", "Corporate Finance"],
-"example_input": "I am a finance major. I helped audit our family business records and found a way to save money on shipping costs.",
-"example_headline": "Financial Analyst | Corporate Finance & Modeling | Driving Operational Cost-Efficiency",
-"example_summary": "I am an analytical Financial Analyst with a strong foundation in corporate modeling and data-driven risk management. I specialize in identifying hidden operational inefficiencies to protect margins and drive bottom-line growth.\n\nRecently, I conducted a comprehensive audit of shipping and logistical expenditures for a mid-sized retail operation. By restructuring vendor contracts and optimizing delivery routes, I successfully realized an annual operational cost reduction of 15%.\n\nSpecialties: Financial Auditing, Advanced Excel (modeling), Budget Forecasting, Vendor Negotiation, and M&A Support."
-},
-"Creative Design": {
-"keywords": ["UI/UX Design", "Brand Identity", "Design Systems", "Visual Storytelling", "Wireframing & Prototyping", "Adobe Creative Suite"],
-"example_input": "I design websites and logos. I redesigned our university club's home page and got a lot of new members to join.",
-"example_headline": "UI/UX & Brand Designer | Creating Human-Centric Digital Experiences",
-"example_summary": "I am a visual storyteller and UI/UX Designer dedicated to building beautiful, human-centric digital products. I combine aesthetic precision with wireframing best practices to turn complex user journeys into intuitive interfaces.\n\nI recently led the end-to-end redesign of a university community portal, focusing heavily on modern typography and responsive layouts. The updated homepage experience boosted active weekly member sign-ups by 40% in the first month.\n\nSpecialties: UI/UX Design, Figma, Adobe Illustrator, Visual Brand Strategy, Prototyping, and Responsive Web Design."
-}
+    "Tech & Software": {
+        "keywords": ["Software Engineering", "Agile Methodologies", "CI/CD Pipelines", "System Architecture", "API Integration", "Full-Stack Development"],
+        "example_input": "I code in Python and React. I built a ticketing system at my last job that helped our support team solve issues faster.",
+        "example_headline": "Software Engineer | Python & React Specialist | Building High-Performance Web Applications",
+        "example_summary": "I am a Full-Stack Software Engineer specializing in building scalable web applications with Python and React. I thrive on translating complex logic into clean, robust code.\n\nIn my previous role, I took ownership of designing and launching an in-house ticketing system. This system successfully streamlined cross-department communication, enabling our support team to resolve customer issues 30% faster.\n\nSpecialties: Python, JavaScript (React.js), Database Design (SQL), API Integration, and Agile Methodologies."
+    },
+    "Finance & Corporate": {
+        "keywords": ["Financial Modeling", "Risk Management", "Data-Driven Analysis", "Regulatory Compliance", "Portfolio Optimization", "Corporate Finance"],
+        "example_input": "I am a finance major. I helped audit our family business records and found a way to save money on shipping costs.",
+        "example_headline": "Financial Analyst | Corporate Finance & Modeling | Driving Operational Cost-Efficiency",
+        "example_summary": "I am an analytical Financial Analyst with a strong foundation in corporate modeling and data-driven risk management. I specialize in identifying hidden operational inefficiencies to protect margins and drive bottom-line growth.\n\nRecently, I conducted a comprehensive audit of shipping and logistical expenditures for a mid-sized retail operation. By restructuring vendor contracts and optimizing delivery routes, I successfully realized an annual operational cost reduction of 15%.\n\nSpecialties: Financial Auditing, Advanced Excel (modeling), Budget Forecasting, Vendor Negotiation, and M&A Support."
+    },
+    "Creative Design": {
+        "keywords": ["UI/UX Design", "Brand Identity", "Design Systems", "Visual Storytelling", "Wireframing & Prototyping", "Adobe Creative Suite"],
+        "example_input": "I design websites and logos. I redesigned our university club's home page and got a lot of new members to join.",
+        "example_headline": "UI/UX & Brand Designer | Creating Human-Centric Digital Experiences",
+        "example_summary": "I am a visual storyteller and UI/UX Designer dedicated to building beautiful, human-centric digital products. I combine aesthetic precision with wireframing best practices to turn complex user journeys into intuitive interfaces.\n\nI recently led the end-to-end redesign of a university community portal, focusing heavily on modern typography and responsive layouts. The updated homepage experience boosted active weekly member sign-ups by 40% in the first month.\n\nSpecialties: UI/UX Design, Figma, Adobe Illustrator, Visual Brand Strategy, Prototyping, and Responsive Web Design."
+    }
 }
 
---- THE LOGGING LAYER: Privacy-Safe Performance Tracking ---
-
+# --- THE LOGGING LAYER: Privacy-Safe Performance Tracking ---
 def log_api_transaction(service_name, status, latency_ms, metadata=None):
-"""Logs system metrics safely as structured JSON without recording sensitive user data."""
-log_payload = {
-"timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-"service": service_name,
-"status": status,
-"latency_ms": round(latency_ms, 2),
-"device": DEVICE,
-"metadata": metadata or {}
-}
-logger.info(json.dumps(log_payload))
+    """Logs system metrics safely as structured JSON without recording sensitive user data."""
+    log_payload = {
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "service": service_name,
+        "status": status,
+        "latency_ms": round(latency_ms, 2),
+        "device": DEVICE,
+        "metadata": metadata or {}
+    }
+    logger.info(json.dumps(log_payload))
 
---- THE GUARDRAILS LAYER: Input Validation ---
-
+# --- THE GUARDRAILS LAYER: Input Validation ---
 def validate_inputs(target_role, core_skills, achievement):
-"""Fast, local validation layer to block obvious spam, empty fields, or prompt injections."""
-if not target_role.strip() or not core_skills.strip() or not achievement.strip():
-return False, "All input fields must be filled out before running optimization."
+    """Fast, local validation layer to block obvious spam, empty fields, or prompt injections."""
+    if not target_role.strip() or not core_skills.strip() or not achievement.strip():
+        return False, "All input fields must be filled out before running optimization."
 
-if len(target_role) < 3 or len(achievement) < 10:
-    return False, "Please provide a more descriptive role and accomplishment to give the AI context."
+    if len(target_role) < 3 or len(achievement) < 10:
+        return False, "Please provide a more descriptive role and accomplishment to give the AI context."
 
-injection_keywords = ["ignore previous", "system prompt", "developer instruction", "override instructions"]
-combined_inputs = f"{target_role} {core_skills} {achievement}".lower()
-if any(keyword in combined_inputs for keyword in injection_keywords):
-    return False, "Unsupported input commands detected. Please stick purely to career experience."
+    injection_keywords = ["ignore previous", "system prompt", "developer instruction", "override instructions"]
+    combined_inputs = f"{target_role} {core_skills} {achievement}".lower()
+    if any(keyword in combined_inputs for keyword in injection_keywords):
+        return False, "Unsupported input commands detected. Please stick purely to career experience."
 
-return True, ""
+    return True, ""
 
-
---- Helper Functions ---
-
+# --- Helper Functions ---
 def create_gradient_backdrop(style="neutral_gray", size=(1024, 1024)):
-"""Generates beautiful, professional linear gradient canvases directly in-memory."""
-width, height = size
-base = Image.new("RGB", size)
-if style == "office_blue":
-color1, color2 = (15, 32, 67), (44, 83, 130)      # Deep Corporate Navy to Slate Blue
-elif style == "soft_teal":
-color1, color2 = (11, 40, 41), (41, 108, 104)      # Dark Forest Teal to Warm Muted Teal
-else:
-color1, color2 = (25, 25, 25), (85, 85, 85)        # Rich Charcoal to Medium Gray
+    """Generates beautiful, professional linear gradient canvases directly in-memory."""
+    width, height = size
+    base = Image.new("RGB", size)
+    if style == "office_blue":
+        color1, color2 = (15, 32, 67), (44, 83, 130)      # Deep Corporate Navy to Slate Blue
+    elif style == "soft_teal":
+        color1, color2 = (11, 40, 41), (41, 108, 104)      # Dark Forest Teal to Warm Muted Teal
+    else:
+        color1, color2 = (25, 25, 25), (85, 85, 85)        # Rich Charcoal to Medium Gray
 
-for y in range(height):
-    ratio = y / height
-    r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-    g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-    b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-    for x in range(width):
-        base.putpixel((x, y), (r, g, b))
-return base
-
+    for y in range(height):
+        ratio = y / height
+        r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
+        g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
+        b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
+        for x in range(width):
+            base.putpixel((x, y), (r, g, b))
+    return base
 
 def generate_fallback_banner(industry, color_palette_name):
-"""Generates a beautiful geometric abstract banner programmatically if the FLUX API is offline."""
-size = (1584, 396)
-image = Image.new("RGB", size)
-draw = ImageDraw.Draw(image)
-palettes = {
-"Corporate Blue": ((15, 32, 67), (44, 83, 130), (100, 149, 237)),
-"Creative Teal": ((11, 40, 41), (41, 108, 104), (127, 255, 212)),
-"Tech Slate": ((15, 15, 15), (50, 50, 60), (150, 150, 160)),
-"Creative Amber": ((60, 30, 10), (120, 60, 20), (255, 191, 0)),
-}
-colors = palettes.get(color_palette_name, palettes["Corporate Blue"])
-c1, c2, c3 = colors
-for y in range(396):
-ratio = y / 396
-r = int(c1[0] * (1 - ratio) + c2[0] * ratio)
-g = int(c1[1] * (1 - ratio) + c2[1] * ratio)
-b = int(c1[2] * (1 - ratio) + c2[2] * ratio)
-draw.line([(0, y), (1584, y)], fill=(r, g, b))
+    """Generates a beautiful geometric abstract banner programmatically if the FLUX API is offline."""
+    size = (1584, 396)
+    image = Image.new("RGB", size)
+    draw = ImageDraw.Draw(image)
+    palettes = {
+        "Corporate Blue": ((15, 32, 67), (44, 83, 130), (100, 149, 237)),
+        "Creative Teal": ((11, 40, 41), (41, 108, 104), (127, 255, 212)),
+        "Tech Slate": ((15, 15, 15), (50, 50, 60), (150, 150, 160)),
+        "Creative Amber": ((60, 30, 10), (120, 60, 20), (255, 191, 0)),
+    }
+    colors = palettes.get(color_palette_name, palettes["Corporate Blue"])
+    c1, c2, c3 = colors
+    for y in range(396):
+        ratio = y / 396
+        r = int(c1[0] * (1 - ratio) + c2[0] * ratio)
+        g = int(c1[1] * (1 - ratio) + c2[1] * ratio)
+        b = int(c1[2] * (1 - ratio) + c2[2] * ratio)
+        draw.line([(0, y), (1584, y)], fill=(r, g, b))
 
-random.seed(hash(industry))
-for _ in range(12):
-    x1, y1 = random.randint(0, 1584), random.randint(0, 396)
-    x2, y2 = x1 + random.randint(100, 450), y1 + random.randint(50, 300)
-    x3, y3 = x1 + random.randint(-200, 200), y1 + random.randint(-150, 150)
-    shape_img = Image.new("RGBA", size)
-    shape_draw = ImageDraw.Draw(shape_img)
-    fill_color = random.choice([c2, c3]) + (random.randint(25, 75),)
-    shape_draw.polygon([(x1, y1), (x2, y2), (x3, y3)], fill=fill_color)
-    image = Image.alpha_composite(image.convert("RGBA"), shape_img).convert("RGB")
-return image
+    random.seed(hash(industry))
+    for _ in range(12):
+        x1, y1 = random.randint(0, 1584), random.randint(0, 396)
+        x2, y2 = x1 + random.randint(100, 450), y1 + random.randint(50, 300)
+        x3, y3 = x1 + random.randint(-200, 200), y1 + random.randint(-150, 150)
+        shape_img = Image.new("RGBA", size)
+        shape_draw = ImageDraw.Draw(shape_img)
+        fill_color = random.choice([c2, c3]) + (random.randint(25, 75),)
+        shape_draw.polygon([(x1, y1), (x2, y2), (x3, y3)], fill=fill_color)
+        image = Image.alpha_composite(image.convert("RGBA"), shape_img).convert("RGB")
+    return image
 
-
---- OpenAI Copywriting Logic with Guardrails & Context ---
-
+# --- OpenAI Copywriting Logic with Guardrails & Context ---
 def optimize_linkedin_text(target_role, core_skills, achievement, style, industry="Tech & Software"):
-# 1. Local Guardrail Check
-is_valid, error_msg = validate_inputs(target_role, core_skills, achievement)
-if not is_valid:
-log_api_transaction("OpenAI-GPT4o", "blocked_by_guardrail", 0, {"reason": error_msg})
-return "", error_msg, []
+    # 1. Local Guardrail Check
+    is_valid, error_msg = validate_inputs(target_role, core_skills, achievement)
+    if not is_valid:
+        log_api_transaction("OpenAI-GPT4o", "blocked_by_guardrail", 0, {"reason": error_msg})
+        return "", error_msg, []
 
-api_key = os.environ.get("OPENAI_API_KEY")
-if not api_key:
-    return "OpenAI API Key is missing.", "Please configure your key in Streamlit secrets or local .env.", []
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        return "OpenAI API Key is missing.", "Please configure your key in Streamlit secrets or local .env.", []
 
-from openai import OpenAI
-client = OpenAI(api_key=api_key)
+    from openai import OpenAI
+    client = OpenAI(api_key=api_key)
 
-# 2. Retrieve Context-Specific Knowledge
-context_data = INDUSTRY_KNOWLEDGE_BASE.get(industry, INDUSTRY_KNOWLEDGE_BASE["Tech & Software"])
-industry_keywords = ", ".join(context_data["keywords"])
+    # 2. Retrieve Context-Specific Knowledge
+    context_data = INDUSTRY_KNOWLEDGE_BASE.get(industry, INDUSTRY_KNOWLEDGE_BASE["Tech & Software"])
+    industry_keywords = ", ".join(context_data["keywords"])
 
-system_prompt = f"""You are an elite LinkedIn copywriter and executive recruiter. Your goal is to optimize professional profiles.
-
+    system_prompt = f"""You are an elite LinkedIn copywriter and executive recruiter. Your goal is to optimize professional profiles.
 
 Your writing MUST conform to these strict industry guidelines:
-
-Dynamically incorporate these high-performing search keywords where appropriate: {industry_keywords}.
-
-Strictly avoid overused corporate buzzwords like 'passionate', 'synergistic', 'dynamic', or 'results-driven'.
-
-Write in a natural, professional first-person perspective that sounds authentic.
+* Dynamically incorporate these high-performing search keywords where appropriate: {industry_keywords}.
+* Strictly avoid overused corporate buzzwords like 'passionate', 'synergistic', 'dynamic', or 'results-driven'.
+* Write in a natural, professional first-person perspective that sounds authentic.
 """
 
-task_prompt = f"""Transform the user's conversational raw inputs into a LinkedIn Headline, 'About' Summary, and SEO Keyword List.
+    task_prompt = f"""Transform the user's conversational raw inputs into a LinkedIn Headline, 'About' Summary, and SEO Keyword List.
 
-Structured Reference Example:
+### Structured Reference Example:
+* USER INPUTS:
+  * Raw Story: {context_data["example_input"]}
+* POLISHED OUTPUT:
+  * Headline: {context_data["example_headline"]}
+  * Summary: {context_data["example_summary"]}
 
-USER INPUTS:
-
-Raw Story: {context_data["example_input"]}
-
-POLISHED OUTPUT:
-
-Headline: {context_data["example_headline"]}
-
-<div class="g3mark-callout g3mark-callout-summary">
-
-<span class="g3mark-callout__icon" aria-hidden="true"></span>
-
-<span class="g3mark-callout__keyword">Summary:</span> {context_data["example_summary"]}
-
-</div>
-
-Live User Data:
-
-Target Role: {target_role}
-
-Core Skills: {core_skills}
-
-Accomplishments: {achievement}
-
-Tone Preference: {style}
+### Live User Data:
+* Target Role: {target_role}
+* Core Skills: {core_skills}
+* Accomplishments: {achievement}
+* Tone Preference: {style}
 
 You must output your response in valid JSON matching this schema:
 {{
@@ -278,183 +245,161 @@ If the user input is offensive, completely off-topic (not about career, profiles
 }}
 """
 
-start_time = time.time()
-try:
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        response_format={ "type": "json_object" },
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": task_prompt}
-        ],
-        timeout=25
-    )
-    latency = (time.time() - start_time) * 1000
-    data = json.loads(response.choices[0].message.content)
-
-    # Check for Model Safety Refusal Status
-    if data.get("status") == "error":
-        log_api_transaction("OpenAI-GPT4o", "refused_by_model", latency)
-        return "", data.get("error_message", "Invalid input detected."), []
-
-    log_api_transaction("OpenAI-GPT4o", "success", latency, {"keyword_count": len(data.get("extracted_keywords", []))})
-    return data.get("headline", ""), data.get("summary", ""), data.get("extracted_keywords", [])
-
-except Exception as e:
-    latency = (time.time() - start_time) * 1000
-    log_api_transaction("OpenAI-GPT4o", "exception_failure", latency, {"error": str(e)})
-    return f"{target_role} | Specialized", f"Error connecting to optimization service: {e}", []
-
-
---- Segmentation logic with Safety Thresholds ---
-
-def process_headshot(image, bg_type, gradient_preset, solid_color):
-if image is None:
-return None
-
-# 1. Enforce resolution caps to protect free-tier CPU constraints
-max_size = 1024
-w, h = image.size
-if w > max_size or h > max_size:
-    ratio = min(max_size / w, max_size / h)
-    image = image.resize((int(w * ratio), int(h * ratio)), Image.Resampling.LANCZOS)
-orig_w, orig_h = image.size
-
-# 2. Segment Foreground Subject
-if BIREFNET_MODEL is None:
-    cut_subject = image.convert("RGBA")
-else:
+    start_time = time.time()
     try:
-        logger.info("Running local BiRefNet segmentation loop...")
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            response_format={ "type": "json_object" },
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": task_prompt}
+            ],
+            timeout=25
+        )
+        latency = (time.time() - start_time) * 1000
+        data = json.loads(response.choices[0].message.content)
 
-        # --- CRITICAL CPU OPTIMIZATION ---
-        # We resize the tensor input down to 512x512 instead of 1024x1024.
-        # This slashes computational matrix overhead by 75% on free-tier containers!
-        transform_image = transforms.Compose([
-            transforms.Resize((512, 512)),
-            transforms.ToTensor(),
-            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-        ])
-        input_tensor = transform_image(image.convert("RGB")).unsqueeze(0).to(DEVICE)
-        with torch.no_grad():
-            outputs = BIREFNET_MODEL(input_tensor)
+        # Check for Model Safety Refusal Status
+        if data.get("status") == "error":
+            log_api_transaction("OpenAI-GPT4o", "refused_by_model", latency)
+            return "", data.get("error_message", "Invalid input detected."), []
 
-            # --- CRITICAL BUG FIX FOR SIGMOID EXCEPTION ---
-            # BiRefNet outputs are returned as a list of stage tensors.
-            # We dynamically unpack and grab the final prediction tensor (logits).
-            if hasattr(outputs, "logits"):
-                pred = outputs.logits[-1] if isinstance(outputs.logits, list) else outputs.logits
-            elif isinstance(outputs, (list, tuple)):
-                pred = outputs[-1]
-            else:
-                pred = outputs
-
-            # Apply sigmoid safely onto the single prediction tensor
-            pred = torch.sigmoid(pred).cpu().numpy().squeeze()
-
-        # Upscale the resulting binary mask back to original bounds
-        mask = Image.fromarray((pred * 255).astype(np.uint8)).resize((orig_w, orig_h), Image.Resampling.BILINEAR)
-        cut_subject = image.convert("RGBA")
-        cut_subject.putalpha(mask)
-        logger.info("Successfully extracted headshot foreground subject.")
-
-        # Force active garbage collection to free container RAM
-        gc.collect()
+        log_api_transaction("OpenAI-GPT4o", "success", latency, {"keyword_count": len(data.get("extracted_keywords", []))})
+        return data.get("headline", ""), data.get("summary", ""), data.get("extracted_keywords", [])
 
     except Exception as e:
-        logger.error(f"Error during segmentation pipeline: {e}")
+        latency = (time.time() - start_time) * 1000
+        log_api_transaction("OpenAI-GPT4o", "exception_failure", latency, {"error": str(e)})
+        return f"{target_role} | Specialized", f"Error connecting to optimization service: {e}", []
+
+# --- Segmentation logic with Safety Thresholds ---
+def process_headshot(image, bg_type, gradient_preset, solid_color):
+    if image is None:
+        return None
+
+    # 1. Enforce resolution caps to protect free-tier CPU constraints
+    max_size = 1024
+    w, h = image.size
+    if w > max_size or h > max_size:
+        ratio = min(max_size / w, max_size / h)
+        image = image.resize((int(w * ratio), int(h * ratio)), Image.Resampling.LANCZOS)
+    orig_w, orig_h = image.size
+
+    # 2. Segment Foreground Subject
+    if BIREFNET_MODEL is None:
         cut_subject = image.convert("RGBA")
+    else:
+        try:
+            logger.info("Running local BiRefNet segmentation loop...")
 
-# 3. Composite over Selected Studio Backdrop
-if bg_type == "Transparent":
-    return cut_subject
-elif bg_type == "Solid Color":
-    hex_color = solid_color.lstrip('#')
-    rgb_color = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
-    background = Image.new("RGB", (orig_w, orig_h), rgb_color)
-    background.paste(cut_subject, (0, 0), cut_subject)
-    return background
-else:
-    preset_map = {
-        "Neutral Charcoal Glow": "neutral_gray", 
-        "Corporate Navy Glow": "office_blue", 
-        "Modern Teal Glow": "soft_teal"
-    }
-    background = create_gradient_backdrop(preset_map.get(gradient_preset, "neutral_gray"), size=(orig_w, orig_h))
-    background.paste(cut_subject, (0, 0), cut_subject)
-    return background
+            # --- CRITICAL CPU OPTIMIZATION ---
+            # We resize the tensor input down to 512x512 instead of 1024x1024.
+            # This slashes computational matrix overhead by 75% on free-tier containers!
+            transform_image = transforms.Compose([
+                transforms.Resize((512, 512)),
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+            ])
+            input_tensor = transform_image(image.convert("RGB")).unsqueeze(0).to(DEVICE)
+            with torch.no_grad():
+                outputs = BIREFNET_MODEL(input_tensor)
 
+                # --- CRITICAL BUG FIX FOR SIGMOID EXCEPTION ---
+                # BiRefNet outputs are returned as a list of stage tensors.
+                # We dynamically unpack and grab the final prediction tensor (logits).
+                if hasattr(outputs, "logits"):
+                    pred = outputs.logits[-1] if isinstance(outputs.logits, list) else outputs.logits
+                elif isinstance(outputs, (list, tuple)):
+                    pred = outputs[-1]
+                else:
+                    pred = outputs
 
---- Prompt Pack Constructor for FLUX ---
+                # Apply sigmoid safely onto the single prediction tensor
+                pred = torch.sigmoid(pred).cpu().numpy().squeeze()
 
+            # Upscale the resulting binary mask back to original bounds
+            mask = Image.fromarray((pred * 255).astype(np.uint8)).resize((orig_w, orig_h), Image.Resampling.BILINEAR)
+            cut_subject = image.convert("RGBA")
+            cut_subject.putalpha(mask)
+            logger.info("Successfully extracted headshot foreground subject.")
+
+            # Force active garbage collection to free container RAM
+            gc.collect()
+
+        except Exception as e:
+            logger.error(f"Error during segmentation pipeline: {e}")
+            cut_subject = image.convert("RGBA")
+
+    # 3. Composite over Selected Studio Backdrop
+    if bg_type == "Transparent":
+        return cut_subject
+    elif bg_type == "Solid Color":
+        hex_color = solid_color.lstrip('#')
+        rgb_color = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+        background = Image.new("RGB", (orig_w, orig_h), rgb_color)
+        background.paste(cut_subject, (0, 0), cut_subject)
+        return background
+    else:
+        preset_map = {
+            "Neutral Charcoal Glow": "neutral_gray", 
+            "Corporate Navy Glow": "office_blue", 
+            "Modern Teal Glow": "soft_teal"
+        }
+        background = create_gradient_backdrop(preset_map.get(gradient_preset, "neutral_gray"), size=(orig_w, orig_h))
+        background.paste(cut_subject, (0, 0), cut_subject)
+        return background
+
+# --- Prompt Pack Constructor for FLUX ---
 def optimize_banner_prompt_with_gpt(inputs):
-"""Uses GPT-4o-mini to convert structured conversational details into a strict spatial FLUX prompt."""
-api_key = os.environ.get("OPENAI_API_KEY")
-if not api_key:
-return f"A high-quality 16:9 banner with top 35% and bottom 35% empty space. The middle 30% contains: corporate headline '{inputs.get('headline')}', tagline '{inputs.get('tagline')}', CTA '{inputs.get('cta')}', and brand colors {inputs.get('colors')}."
+    """Uses GPT-4o-mini to convert structured conversational details into a strict spatial FLUX prompt."""
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        return f"A high-quality 16:9 banner with top 35% and bottom 35% empty space. The middle 30% contains: corporate headline '{inputs.get('headline')}', tagline '{inputs.get('tagline')}', CTA '{inputs.get('cta')}', and brand colors {inputs.get('colors')}."
 
-from openai import OpenAI
-client = OpenAI(api_key=api_key)
+    from openai import OpenAI
+    client = OpenAI(api_key=api_key)
 
-system_prompt = """You are an elite prompt engineer for AI image generators (such as FLUX.1-schnell).
-
+    system_prompt = """You are an elite prompt engineer for AI image generators (such as FLUX.1-schnell).
 
 Your task is to write a single, highly detailed, visually clear prompt that structures a wide 16:9 canvas to be crop-ready for LinkedIn's 1584x396 aspect ratio.
 
 You MUST strictly enforce these visual boundaries in the final generated prompt:
-
-Top 35% of the image canvas: Must be a completely solid, blank empty background with absolutely no text, icons, or graphical elements.
-
-Bottom 35% of the image canvas: Must be a completely solid, blank empty background with absolutely no text, icons, or graphical elements.
-
-Middle 30% horizontal strip: Squeeze all content (graphics, text, buttons, subjects) exclusively into this vertical center strip.
-
-Left-to-right element placement within the middle 30% strip:
-
-Call To Action (CTA) Button: Precise high contrast button anchored in the top-left section of this strip, positioned above the subject's shoulder.
-
-Profile Portrait: Located center-left of the strip, depicting a professional photographic-style portrait of the user matching their description. Ensure it remains a realistic photograph with no cartoon effects.
-
-Text Elements (Headline and Tagline): Positioned cleanly on the right side of the strip. Headline on top in strong readable typography, Tagline directly underneath in a secondary smaller font.
-
-Social Proof: Small, clean rows of stats or modern vector partner logos on the bottom-right.
-
-Background Pattern: Dynamic geometric shapes, subtle lines, or professional gradient blending matching the requested brand colors. Ensure background elements are subtle enough to guarantee legible text.
+1. Top 35% of the image canvas: Must be a completely solid, blank empty background with absolutely no text, icons, or graphical elements.
+2. Bottom 35% of the image canvas: Must be a completely solid, blank empty background with absolutely no text, icons, or graphical elements.
+3. Middle 30% horizontal strip: Squeeze all content (graphics, text, buttons, subjects) exclusively into this vertical center strip.
+4. Left-to-right element placement within the middle 30% strip:
+   * Call To Action (CTA) Button: Precise high contrast button anchored in the top-left section of this strip, positioned above the subject's shoulder.
+   * Profile Portrait: Located center-left of the strip, depicting a professional photographic-style portrait of the user matching their description. Ensure it remains a realistic photograph with no cartoon effects.
+   * Text Elements (Headline and Tagline): Positioned cleanly on the right side of the strip. Headline on top in strong readable typography, Tagline directly underneath in a secondary smaller font.
+   * Social Proof: Small, clean rows of stats or modern vector partner logos on the bottom-right.
+   * Background Pattern: Dynamic geometric shapes, subtle lines, or professional gradient blending matching the requested brand colors. Ensure background elements are subtle enough to guarantee legible text.
 
 Output ONLY the final prompt string with no preambles, introductory talk, or wrapping markdown code blocks."""
 
-user_prompt = f"""Generate a structured FLUX prompt matching these specifications:
-
-
-Primary Headline: "{inputs.get('headline')}"
-
-Secondary Tagline: "{inputs.get('tagline')}"
-
-CTA Text: "{inputs.get('cta')}"
-
-Social Proof/Stats: "{inputs.get('social_proof')}"
-
-Brand Colors: "{inputs.get('colors')}"
-
-User Photo & Modifications: "{inputs.get('photo_description')}"
+    user_prompt = f"""Generate a structured FLUX prompt matching these specifications:
+* Primary Headline: "{inputs.get('headline')}"
+* Secondary Tagline: "{inputs.get('tagline')}"
+* CTA Text: "{inputs.get('cta')}"
+* Social Proof/Stats: "{inputs.get('social_proof')}"
+* Brand Colors: "{inputs.get('colors')}"
+* User Photo & Modifications: "{inputs.get('photo_description')}"
 """
 
-try:
-response = client.chat.completions.create(
-model="gpt-4o-mini",
-messages=[
-{"role": "system", "content": system_prompt},
-{"role": "user", "content": user_prompt}
-],
-timeout=20
-)
-return response.choices[0].message.content.strip()
-except Exception as e:
-logger.error(f"Error optimizing banner prompt: {e}")
-return f"A high-quality 16:9 banner with top 35% and bottom 35% empty solid background. The middle 30% horizontal strip contains a professional headshot on the left, headline '{inputs.get('headline')}' and tagline '{inputs.get('tagline')}' on the right, and CTA button '{inputs.get('cta')}', with geometric abstract background in colors {inputs.get('colors')}."
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            timeout=20
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        logger.error(f"Error optimizing banner prompt: {e}")
+        return f"A high-quality 16:9 banner with top 35% and bottom 35% empty solid background. The middle 30% horizontal strip contains a professional headshot on the left, headline '{inputs.get('headline')}' and tagline '{inputs.get('tagline')}' on the right, and CTA button '{inputs.get('cta')}', with geometric abstract background in colors {inputs.get('colors')}."
 
---- STREAMLIT UI DESIGN ---
-
+# --- STREAMLIT UI DESIGN ---
 st.set_page_config(page_title="CompleteProfile AI", layout="wide")
 
 st.title("💼 CompleteProfile AI")
@@ -463,254 +408,252 @@ st.write("### Your All-in-One Digital Career & LinkedIn Optimizer")
 tab1, tab2, tab3 = st.tabs(["✍️ AI Career Journalist", "🖼️ Instant Studio Headshot", "🎨 Context-Aware Banner"])
 
 with tab1:
-st.write("### 1. Tell us your career story")
-col1, col2 = st.columns(2)
-with col1:
-industry = st.selectbox(
-"Your Target Industry Focus",
-["Tech & Software", "Finance & Corporate", "Creative Design"],
-key="text_industry"
-)
-role = st.text_input("What is your Target Role?", placeholder="e.g., Junior Product Manager")
-skills = st.text_input("Core Skills (separated by commas)")
-achievement = st.text_area("What is one major professional/academic accomplishment?")
-style = st.selectbox("Working Style Preset", ["Professional & Direct", "Creative & Innovative", "Warm & Collaborative"])
-btn = st.button("Generate Professional Copy", type="primary")
+    st.write("### 1. Tell us your career story")
+    col1, col2 = st.columns(2)
+    with col1:
+        industry = st.selectbox(
+            "Your Target Industry Focus",
+            ["Tech & Software", "Finance & Corporate", "Creative Design"],
+            key="text_industry"
+        )
+        role = st.text_input("What is your Target Role?", placeholder="e.g., Junior Product Manager")
+        skills = st.text_input("Core Skills (separated by commas)")
+        achievement = st.text_area("What is one major professional/academic accomplishment?")
+        style = st.selectbox("Working Style Preset", ["Professional & Direct", "Creative & Innovative", "Warm & Collaborative"])
+        btn = st.button("Generate Professional Copy", type="primary")
 
-with col2:
-    if btn:
-        with st.spinner("Writing optimized content..."):
-            h_out, s_out, k_out = optimize_linkedin_text(role, skills, achievement, style, industry)
-            st.session_state.headline = h_out
-            st.session_state.summary = s_out
-            st.session_state.keywords = k_out
+    with col2:
+        if btn:
+            with st.spinner("Writing optimized content..."):
+                h_out, s_out, k_out = optimize_linkedin_text(role, skills, achievement, style, industry)
+                st.session_state.headline = h_out
+                st.session_state.summary = s_out
+                st.session_state.keywords = k_out
 
-    # Elements pull from session state so data does not vanish when changing parameters/tabs
-    st.text_input("Optimized LinkedIn Headline", value=st.session_state.headline)
-    st.text_area("LinkedIn 'About' Summary", value=st.session_state.summary, height=250)
-    st.multiselect("Extracted SEO Keywords", options=st.session_state.keywords, default=st.session_state.keywords)
-
+        # Elements pull from session state so data does not vanish when changing parameters/tabs
+        st.text_input("Optimized LinkedIn Headline", value=st.session_state.headline)
+        st.text_area("LinkedIn 'About' Summary", value=st.session_state.summary, height=250)
+        st.multiselect("Extracted SEO Keywords", options=st.session_state.keywords, default=st.session_state.keywords)
 
 with tab2:
-st.write("### 2. Instant Studio Backdrop Editor")
-col1, col2 = st.columns(2)
-with col1:
-uploaded_file = st.file_uploader("Upload Casual Headshot", type=["jpg", "png", "jpeg"])
-bg_type = st.radio("Backdrop Type", ["Transparent", "Solid Color", "Gradient Studio Backdrop"])
+    st.write("### 2. Instant Studio Backdrop Editor")
+    col1, col2 = st.columns(2)
+    with col1:
+        uploaded_file = st.file_uploader("Upload Casual Headshot", type=["jpg", "png", "jpeg"])
+        bg_type = st.radio("Backdrop Type", ["Transparent", "Solid Color", "Gradient Studio Backdrop"])
 
-    if bg_type == "Solid Color":
-        solid_color = st.color_picker("Pick a background color", "#1E3A8A")
-        gradient_style = None
-    elif bg_type == "Gradient Studio Backdrop":
-        gradient_style = st.selectbox("Select Gradient Preset", ["Neutral Charcoal Glow", "Corporate Navy Glow", "Modern Teal Glow"])
-        solid_color = None
-    else:
-        solid_color = None
-        gradient_style = None
+        if bg_type == "Solid Color":
+            solid_color = st.color_picker("Pick a background color", "#1E3A8A")
+            gradient_style = None
+        elif bg_type == "Gradient Studio Backdrop":
+            gradient_style = st.selectbox("Select Gradient Preset", ["Neutral Charcoal Glow", "Corporate Navy Glow", "Modern Teal Glow"])
+            solid_color = None
+        else:
+            solid_color = None
+            gradient_style = None
 
-    process_btn = st.button("Process Studio Portrait", type="primary")
+        process_btn = st.button("Process Studio Portrait", type="primary")
 
-with col2:
-    if uploaded_file and process_btn:
-        with st.spinner("Extracting background with AI..."):
-            input_img = Image.open(uploaded_file)
-            output_img = process_headshot(input_img, bg_type, gradient_style, solid_color)
+    with col2:
+        if uploaded_file and process_btn:
+            with st.spinner("Extracting background with AI..."):
+                input_img = Image.open(uploaded_file)
+                output_img = process_headshot(input_img, bg_type, gradient_style, solid_color)
 
-            if output_img:
-                st.image(output_img, caption="Your New Studio Profile Picture", width=400)
+                if output_img:
+                    st.image(output_img, caption="Your New Studio Profile Picture", width=400)
 
-                # Convert canvas asset into dynamic download buffer
-                buf = io.BytesIO()
+                    # Convert canvas asset into dynamic download buffer
+                    buf = io.BytesIO()
 
-                # Dynamically set format based on transparency option
-                img_format = "PNG" if bg_type == "Transparent" else "JPEG"
-                file_ext = "png" if bg_type == "Transparent" else "jpg"
-                mime_type = "image/png" if bg_type == "Transparent" else "image/jpeg"
+                    # Dynamically set format based on transparency option
+                    img_format = "PNG" if bg_type == "Transparent" else "JPEG"
+                    file_ext = "png" if bg_type == "Transparent" else "jpg"
+                    mime_type = "image/png" if bg_type == "Transparent" else "image/jpeg"
 
-                output_img.save(buf, format=img_format)
-                byte_im = buf.getvalue()
+                    output_img.save(buf, format=img_format)
+                    byte_im = buf.getvalue()
 
-                st.download_button(
-                    label="📥 Download Profile Image",
-                    data=byte_im,
-                    file_name=f"linkedin_headshot.{file_ext}",
-                    mime=mime_type
-                )
-
+                    st.download_button(
+                        label="📥 Download Profile Image",
+                        data=byte_im,
+                        file_name=f"linkedin_headshot.{file_ext}",
+                        mime=mime_type
+                    )
 
 with tab3:
-st.write("### 🎨 Interactive Banner Designer Chatbot")
-st.write("Collaborate step-by-step with our virtual design assistant to generate a perfectly formatted, crop-ready LinkedIn banner.")
+    st.write("### 🎨 Interactive Banner Designer Chatbot")
+    st.write("Collaborate step-by-step with our virtual design assistant to generate a perfectly formatted, crop-ready LinkedIn banner.")
 
-# 1. Render Scrollable Conversational Thread
-chat_container = st.container()
-with chat_container:
-    for msg in st.session_state.banner_messages:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
-            if "image" in msg and msg["image"] is not None:
-                st.image(msg["image"], caption="Generated Banner Output", width="stretch")
+    # 1. Render Scrollable Conversational Thread
+    chat_container = st.container()
+    with chat_container:
+        for msg in st.session_state.banner_messages:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+                if "image" in msg and msg["image"] is not None:
+                    st.image(msg["image"], caption="Generated Banner Output", width=400)
 
-# 2. Sequential Chat Steps State Machine
-step = st.session_state.banner_step
+    # 2. Sequential Chat Steps State Machine
+    step = st.session_state.banner_step
 
-if step <= 5:
-    # Prompt user response using text input bar
-    if prompt := st.chat_input("Enter your answer..."):
-        # Record user answer
-        st.session_state.banner_messages.append({"role": "user", "content": prompt})
-        
-        # Map input
-        if step == 1:
-            st.session_state.banner_inputs["headline"] = prompt
-            st.session_state.banner_messages.append({
-                "role": "assistant",
-                "content": "Excellent headline. **2. What is your Secondary Tagline?**"
-            })
-            st.session_state.banner_step = 2
-        elif step == 2:
-            st.session_state.banner_inputs["tagline"] = prompt
-            st.session_state.banner_messages.append({
-                "role": "assistant",
-                "content": "Great tagline! **3. What is the Call to Action (CTA) text?** (e.g. 'DM to collaborate', 'Visit my portfolio')"
-            })
-            st.session_state.banner_step = 3
-        elif step == 3:
-            st.session_state.banner_inputs["cta"] = prompt
-            st.session_state.banner_messages.append({
-                "role": "assistant",
-                "content": "Noted! **4. What Social Proof, stats, or client logos should be included?** (e.g. 'Ex-Google', '5+ Years Exp', 'Built 20+ apps')"
-            })
-            st.session_state.banner_step = 4
-        elif step == 4:
-            st.session_state.banner_inputs["social_proof"] = prompt
-            st.session_state.banner_messages.append({
-                "role": "assistant",
-                "content": "Got it. **5. What are your Brand Colours?** (Please supply Hex codes, e.g. `#1E3A8A and #FFBF00` or descriptive names, e.g. `Dark Corporate Blue and gold`)"
-            })
-            st.session_state.banner_step = 5
-        elif step == 5:
-            st.session_state.banner_inputs["colors"] = prompt
-            st.session_state.banner_messages.append({
-                "role": "assistant",
-                "content": "Perfect. **6. Please upload a realistic photo of yourself and specify any changes.** Use the form below to upload your headshot portrait and describe any modifications you want made to your appearance (e.g. 'Change my casual t-shirt to a dark corporate suit')."
-            })
-            st.session_state.banner_step = 6
-            
-        st.rerun()
+    if step <= 5:
+        # Prompt user response using text input bar
+        if prompt := st.chat_input("Enter your answer..."):
+            # Record user answer
+            st.session_state.banner_messages.append({"role": "user", "content": prompt})
 
-elif step == 6:
-    # Prompt for image uploads and modifications
-    st.write("---")
-    st.info("🎨 Step 6: Provide your Professional Headshot Portrait Details")
-    col_img, col_desc = st.columns(2)
-    
-    with col_img:
-        banner_headshot = st.file_uploader("Upload Headshot Photo", type=["jpg", "png", "jpeg"], key="banner_headshot")
-    with col_desc:
-        photo_edits = st.text_area(
-            "Appearance Modifications", 
-            value="Change my casual wear to a tailored dark blue corporate suit, neat hair, professional executive setup.",
-            help="Describe any attire changes or background enhancements you want the visual artist to apply."
-        )
-        
-    submit_photo = st.button("Submit Profile Photo & Details", type="primary")
-    
-    if submit_photo:
-        st.session_state.banner_inputs["photo_description"] = photo_edits
-        st.session_state.banner_messages.append({
-            "role": "user",
-            "content": f"[Photo Provided] with requested modifications: *{photo_edits}*"
-        })
-        st.session_state.banner_messages.append({
-            "role": "assistant",
-            "content": "All design elements collected! Let's generate your custom-cropped, 16:9 centered LinkedIn banner now. Click the **'Generate LinkedIn Banner'** button below to start the visual pipeline."
-        })
-        st.session_state.banner_step = 7
-        st.rerun()
-
-elif step == 7:
-    st.write("---")
-    st.success("🎉 All Details Compiled Successfully!")
-    
-    # Display summary cards of collected details
-    col_s1, col_s2, col_s3 = st.columns(3)
-    with col_s1:
-        st.markdown(f"**Headline:** {st.session_state.banner_inputs.get('headline')}")
-        st.markdown(f"**Tagline:** {st.session_state.banner_inputs.get('tagline')}")
-    with col_s2:
-        st.markdown(f"**CTA:** {st.session_state.banner_inputs.get('cta')}")
-        st.markdown(f"**Social Proof:** {st.session_state.banner_inputs.get('social_proof')}")
-    with col_s3:
-        st.markdown(f"**Palette:** {st.session_state.banner_inputs.get('colors')}")
-        st.markdown(f"**Photo Changes:** {st.session_state.banner_inputs.get('photo_description')}")
-        
-    col_btn1, col_btn2 = st.columns([1, 4])
-    with col_btn1:
-        btn_generate = st.button("🎨 Generate Banner", type="primary")
-    with col_btn2:
-        if st.button("🔄 Reset Chat", type="secondary"):
-            st.session_state.banner_messages = [
-                {
+            # Map input
+            if step == 1:
+                st.session_state.banner_inputs["headline"] = prompt
+                st.session_state.banner_messages.append({
                     "role": "assistant",
-                    "content": "Hello! I am your professional **LinkedIn Banner Designer**. I will help you design a high-converting, visually vibrant, and professional LinkedIn banner centered within a crop-ready 16:9 canvas.\n\nTo begin, please tell me: **1. What is your Primary Headline?**"
-                }
-            ]
-            st.session_state.banner_step = 1
-            st.session_state.banner_inputs = {}
+                    "content": "Excellent headline. **2. What is your Secondary Tagline?**"
+                })
+                st.session_state.banner_step = 2
+            elif step == 2:
+                st.session_state.banner_inputs["tagline"] = prompt
+                st.session_state.banner_messages.append({
+                    "role": "assistant",
+                    "content": "Great tagline! **3. What is the Call to Action (CTA) text?** (e.g. 'DM to collaborate', 'Visit my portfolio')"
+                })
+                st.session_state.banner_step = 3
+            elif step == 3:
+                st.session_state.banner_inputs["cta"] = prompt
+                st.session_state.banner_messages.append({
+                    "role": "assistant",
+                    "content": "Noted! **4. What Social Proof, stats, or client logos should be included?** (e.g. 'Ex-Google', '5+ Years Exp', 'Built 20+ apps')"
+                })
+                st.session_state.banner_step = 4
+            elif step == 4:
+                st.session_state.banner_inputs["social_proof"] = prompt
+                st.session_state.banner_messages.append({
+                    "role": "assistant",
+                    "content": "Got it. **5. What are your Brand Colours?** (Please supply Hex codes, e.g. `#1E3A8A and #FFBF00` or descriptive names, e.g. `Dark Corporate Blue and gold`)"
+                })
+                st.session_state.banner_step = 5
+            elif step == 5:
+                st.session_state.banner_inputs["colors"] = prompt
+                st.session_state.banner_messages.append({
+                    "role": "assistant",
+                    "content": "Perfect. **6. Please upload a realistic photo of yourself and specify any changes.** Use the form below to upload your headshot portrait and describe any modifications you want made to your appearance (e.g. 'Change my casual t-shirt to a dark corporate suit')."
+                })
+                st.session_state.banner_step = 6
+
             st.rerun()
 
-    if btn_generate:
-        with st.spinner("Collaborating with the visual artist engine..."):
-            # 1. Optimize the FLUX prompt via GPT-4o-mini
-            flux_prompt = optimize_banner_prompt_with_gpt(st.session_state.banner_inputs)
-            logger.info(f"Generated optimized spatial prompt for FLUX: {flux_prompt}")
-            
-            # 2. Call the Hugging Face Inference FLUX Endpoint
-            api_url = "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell"
-            hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HF_API_KEY")
-            headers = {"Authorization": f"Bearer {hf_token}"} if hf_token else {}
-            
-            payload = {
-                "inputs": flux_prompt,
-                "parameters": {"width": 1024, "height": 576} # Standard 16:9 aspect ratio
-            }
-            
-            banner_img = None
-            start_banner_time = time.time()
-            try:
-                response = requests.post(api_url, headers=headers, json=payload, timeout=45)
-                if response.status_code == 200:
-                    banner_img = Image.open(io.BytesIO(response.content))
-                    log_api_transaction("HF-Flux-Schnell", "success", (time.time() - start_banner_time) * 1000)
-                else:
-                    log_api_transaction("HF-Flux-Schnell", "non_200_failure", (time.time() - start_banner_time) * 1000, {"status_code": response.status_code})
-            except Exception as e:
-                log_api_transaction("HF-Flux-Schnell", "exception_failure", (time.time() - start_banner_time) * 1000, {"error": str(e)})
+    elif step == 6:
+        # Prompt for image uploads and modifications
+        st.write("---")
+        st.info("🎨 Step 6: Provide your Professional Headshot Portrait Details")
+        col_img, col_desc = st.columns(2)
 
-            # Check if fallback is required
-            if banner_img is None:
-                # Fall back to procedural generation
-                banner_img = generate_fallback_banner(
-                    st.session_state.banner_inputs.get("headline", "Professional"),
-                    "Corporate Blue"
-                )
+        with col_img:
+            banner_headshot = st.file_uploader("Upload Headshot Photo", type=["jpg", "png", "jpeg"], key="banner_headshot")
+        with col_desc:
+            photo_edits = st.text_area(
+                "Appearance Modifications", 
+                value="Change my casual wear to a tailored dark blue corporate suit, neat hair, professional executive setup.",
+                help="Describe any attire changes or background enhancements you want the visual artist to apply."
+            )
 
-            # Format to buffer for st.download_button
-            buf_banner = io.BytesIO()
-            banner_img.save(buf_banner, format="PNG")
-            byte_banner = buf_banner.getvalue()
+        submit_photo = st.button("Submit Profile Photo & Details", type="primary")
 
-            # Add final confirmation block to conversation history
+        if submit_photo:
+            st.session_state.banner_inputs["photo_description"] = photo_edits
+            st.session_state.banner_messages.append({
+                "role": "user",
+                "content": f"[Photo Provided] with requested modifications: *{photo_edits}*"
+            })
             st.session_state.banner_messages.append({
                 "role": "assistant",
-                "content": "🎨 Here is your custom-designed, centered LinkedIn banner! Since AI generators cannot output LinkedIn's custom dimensions natively, this image has been output as a wide 16:9 canvas with all elements concentrated within the center 30% horizontal strip. \n\n**To Crop:** Simply upload this image to your LinkedIn profile and crop out the top and bottom solid background elements to fit the 1584 x 396 container perfectly!",
-                "image": banner_img
+                "content": "All design elements collected! Let's generate your custom-cropped, 16:9 centered LinkedIn banner now. Click the **'Generate LinkedIn Banner'** button below to start the visual pipeline."
             })
-            
-            # Keep active session state image bytes for rendering download button
-            st.session_state.last_generated_banner = byte_banner
+            st.session_state.banner_step = 7
             st.rerun()
+
+    elif step == 7:
+        st.write("---")
+        st.success("🎉 All Details Compiled Successfully!")
+
+        # Display summary cards of collected details
+        col_s1, col_s2, col_s3 = st.columns(3)
+        with col_s1:
+            st.markdown(f"**Headline:** {st.session_state.banner_inputs.get('headline')}")
+            st.markdown(f"**Tagline:** {st.session_state.banner_inputs.get('tagline')}")
+        with col_s2:
+            st.markdown(f"**CTA:** {st.session_state.banner_inputs.get('cta')}")
+            st.markdown(f"**Social Proof:** {st.session_state.banner_inputs.get('social_proof')}")
+        with col_s3:
+            st.markdown(f"**Palette:** {st.session_state.banner_inputs.get('colors')}")
+            st.markdown(f"**Photo Changes:** {st.session_state.banner_inputs.get('photo_description')}")
+
+        col_btn1, col_btn2 = st.columns([1, 4])
+        with col_btn1:
+            btn_generate = st.button("🎨 Generate Banner", type="primary")
+        with col_btn2:
+            if st.button("🔄 Reset Chat", type="secondary"):
+                st.session_state.banner_messages = [
+                    {
+                        "role": "assistant",
+                        "content": "Hello! I am your professional **LinkedIn Banner Designer**. I will help you design a high-converting, visually vibrant, and professional LinkedIn banner centered within a crop-ready 16:9 canvas.\n\nTo begin, please tell me: **1. What is your Primary Headline?**"
+                    }
+                ]
+                st.session_state.banner_step = 1
+                st.session_state.banner_inputs = {}
+                st.rerun()
+
+        if btn_generate:
+            with st.spinner("Collaborating with the visual artist engine..."):
+                # 1. Optimize the FLUX prompt via GPT-4o-mini
+                flux_prompt = optimize_banner_prompt_with_gpt(st.session_state.banner_inputs)
+                logger.info(f"Generated optimized spatial prompt for FLUX: {flux_prompt}")
+
+                # 2. Call the Hugging Face Inference FLUX Endpoint
+                api_url = "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell"
+                hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HF_API_KEY")
+                headers = {"Authorization": f"Bearer {hf_token}"} if hf_token else {}
+
+                payload = {
+                    "inputs": flux_prompt,
+                    "parameters": {"width": 1024, "height": 576} # Standard 16:9 aspect ratio
+                }
+
+                banner_img = None
+                start_banner_time = time.time()
+                try:
+                    response = requests.post(api_url, headers=headers, json=payload, timeout=45)
+                    if response.status_code == 200:
+                        banner_img = Image.open(io.BytesIO(response.content))
+                        log_api_transaction("HF-Flux-Schnell", "success", (time.time() - start_banner_time) * 1000)
+                    else:
+                        log_api_transaction("HF-Flux-Schnell", "non_200_failure", (time.time() - start_banner_time) * 1000, {"status_code": response.status_code})
+                except Exception as e:
+                    log_api_transaction("HF-Flux-Schnell", "exception_failure", (time.time() - start_banner_time) * 1000, {"error": str(e)})
+
+                # Check if fallback is required
+                if banner_img is None:
+                    # Fall back to procedural generation
+                    banner_img = generate_fallback_banner(
+                        st.session_state.banner_inputs.get("headline", "Professional"),
+                        "Corporate Blue"
+                    )
+
+                # Format to buffer for st.download_button
+                buf_banner = io.BytesIO()
+                banner_img.save(buf_banner, format="PNG")
+                byte_banner = buf_banner.getvalue()
+
+                # Add final confirmation block to conversation history
+                st.session_state.banner_messages.append({
+                    "role": "assistant",
+                    "content": "🎨 Here is your custom-designed, centered LinkedIn banner! Since AI generators cannot output LinkedIn's custom dimensions natively, this image has been output as a wide 16:9 canvas with all elements concentrated within the center 30% horizontal strip. \n\n**To Crop:** Simply upload this image to your LinkedIn profile and crop out the top and bottom solid background elements to fit the 1584 x 396 container perfectly!",
+                    "image": banner_img
+                })
+
+                # Keep active session state image bytes for rendering download button
+                st.session_state.last_generated_banner = byte_banner
+                st.rerun()
 
 # 3. Render persistent download button if a banner has been generated
 if "last_generated_banner" in st.session_state:
