@@ -4,7 +4,7 @@ CompleteProfile AI - Streamlit Edition (Production-Grade Portfolio Version)
 An all-in-one digital career assistant that helps job seekers build fully
 optimized LinkedIn profiles from scratch using Streamlit, OpenAI, and BiRefNet.
 
-Author: Azzam Alnatsheh (aalnatsheh@npc.qa)
+Author: Azzam Alnatsheh
 License: MIT
 """
 
@@ -153,8 +153,8 @@ def create_gradient_backdrop(style="neutral_gray", size=(1024, 1024)):
     for y in range(height):
         ratio = y / height
         r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-        g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-        b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
+        g = int(color1 * (1 - ratio) + color2 * ratio)
+        b = int(color1 * (1 - ratio) + color2 * ratio)
         for x in range(width):
             base.putpixel((x, y), (r, g, b))
     return base
@@ -175,8 +175,8 @@ def generate_fallback_banner(industry, color_palette_name):
     for y in range(396):
         ratio = y / 396
         r = int(c1[0] * (1 - ratio) + c2[0] * ratio)
-        g = int(c1[1] * (1 - ratio) + c2[1] * ratio)
-        b = int(c1[2] * (1 - ratio) + c2[2] * ratio)
+        g = int(c1 * (1 - ratio) + c2 * ratio)
+        b = int(c1 * (1 - ratio) + c2 * ratio)
         draw.line([(0, y), (1584, y)], fill=(r, g, b))
 
     random.seed(hash(industry))
@@ -359,9 +359,10 @@ def process_headshot(image, bg_type, gradient_preset, solid_color):
 # --- Multimodal Banner Generation Engine: Nano Banana 2 ---
 def generate_banner_with_gemini(inputs, uploaded_image):
     """Generates the banner image using gemini-3.1-flash-image (Nano Banana 2) with multimodal inputs."""
-    gemini_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or os.environ.get("OPENAI_API_KEY")
+    # We strictly read ONLY a valid Google-owned API key. We removed the fallback to OPENAI keys to prevent 400 key authentication failures.
+    gemini_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if not gemini_key:
-        logger.error("Gemini/Google API Key is missing.")
+        logger.warning("Google/Gemini API Key is missing. Bypassing cloud API call and routing to local geometric banner generator.")
         return None
 
     try:
@@ -665,7 +666,7 @@ with tab3:
 
                 # Check if fallback is required
                 if banner_img is None:
-                    logger.warning("Gemini generation failed. Executing fallback canvas generator.")
+                    logger.warning("Gemini generation bypassed or failed. Executing fallback geometric canvas generator.")
                     banner_img = generate_fallback_banner(
                         st.session_state.banner_inputs.get("headline", "Professional"),
                         "Corporate Blue"
