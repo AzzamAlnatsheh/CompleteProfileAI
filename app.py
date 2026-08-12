@@ -4,7 +4,7 @@ CompleteProfile AI - Streamlit Edition (Production-Grade Portfolio Version)
 An all-in-one digital career assistant that helps job seekers build fully 
 optimized LinkedIn profiles from scratch using Streamlit, OpenAI, and BiRefNet.
 
-Author: Azzam Alnatsheh (aalnatsheh@npc.qa)
+Author: Azzam Alnatsheh
 License: MIT
 """
 
@@ -290,7 +290,7 @@ def process_headshot(image, bg_type, gradient_preset, solid_color):
             input_tensor = transform_image(image.convert("RGB")).unsqueeze(0).to(DEVICE)
             with torch.no_grad():
                 outputs = BIREFNET_MODEL(input_tensor)
-                
+
                 # --- CRITICAL BUG FIX FOR SIGMOID EXCEPTION ---
                 # BiRefNet outputs are returned as a list of stage tensors.
                 # We dynamically unpack and grab the final prediction tensor (logits).
@@ -300,7 +300,7 @@ def process_headshot(image, bg_type, gradient_preset, solid_color):
                     pred = outputs[-1]
                 else:
                     pred = outputs
-                
+
                 # Apply sigmoid safely onto the single prediction tensor
                 pred = torch.sigmoid(pred).cpu().numpy().squeeze()
 
@@ -318,10 +318,14 @@ def process_headshot(image, bg_type, gradient_preset, solid_color):
             cut_subject = image.convert("RGBA")
 
     # 3. Composite over Selected Studio Backdrop
-    if bg_type == "Solid Color":
+    if bg_type == "Transparent":
+        return cut_subject
+    elif bg_type == "Solid Color":
         hex_color = solid_color.lstrip('#')
         rgb_color = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
         background = Image.new("RGB", (orig_w, orig_h), rgb_color)
+        background.paste(cut_subject, (0, 0), cut_subject)
+        return background
     else:
         preset_map = {
             "Neutral Charcoal Glow": "neutral_gray", 
@@ -329,9 +333,8 @@ def process_headshot(image, bg_type, gradient_preset, solid_color):
             "Modern Teal Glow": "soft_teal"
         }
         background = create_gradient_backdrop(preset_map.get(gradient_preset, "neutral_gray"), size=(orig_w, orig_h))
-
-    background.paste(cut_subject, (0, 0), cut_subject)
-    return background
+        background.paste(cut_subject, (0, 0), cut_subject)
+        return background
 
 # --- STREAMLIT UI DESIGN ---
 st.set_page_config(page_title="CompleteProfile AI", layout="wide")
@@ -374,14 +377,17 @@ with tab2:
     col1, col2 = st.columns(2)
     with col1:
         uploaded_file = st.file_uploader("Upload Casual Headshot", type=["jpg", "png", "jpeg"])
-        bg_type = st.radio("Backdrop Type", ["Solid Color", "Gradient Studio Backdrop"])
+        bg_type = st.radio("Backdrop Type", ["Transparent", "Solid Color", "Gradient Studio Backdrop"])
 
         if bg_type == "Solid Color":
             solid_color = st.color_picker("Pick a background color", "#1E3A8A")
             gradient_style = None
-        else:
+        elif bg_type == "Gradient Studio Backdrop":
             gradient_style = st.selectbox("Select Gradient Preset", ["Neutral Charcoal Glow", "Corporate Navy Glow", "Modern Teal Glow"])
             solid_color = None
+        else:
+            solid_color = None
+            gradient_style = None
 
         process_btn = st.button("Process Studio Portrait", type="primary")
 
@@ -396,14 +402,20 @@ with tab2:
 
                     # Convert canvas asset into dynamic download buffer
                     buf = io.BytesIO()
-                    output_img.save(buf, format="JPEG")
+                    
+                    # Dynamically set format based on transparency option
+                    img_format = "PNG" if bg_type == "Transparent" else "JPEG"
+                    file_ext = "png" if bg_type == "Transparent" else "jpg"
+                    mime_type = "image/png" if bg_type == "Transparent" else "image/jpeg"
+                    
+                    output_img.save(buf, format=img_format)
                     byte_im = buf.getvalue()
 
                     st.download_button(
                         label="📥 Download Profile Image",
                         data=byte_im,
-                        file_name="linkedin_headshot.jpg",
-                        mime="image/jpeg"
+                        file_name=f"linkedin_headshot.{file_ext}",
+                        mime=mime_type
                     )
 
 with tab3:
