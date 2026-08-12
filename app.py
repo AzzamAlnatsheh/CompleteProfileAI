@@ -56,6 +56,7 @@ def load_birefnet():
             trust_remote_code=True
         )
         model.to(DEVICE)
+        model.float() # Force float32 precision to prevent datatype mismatch on CPU devices
         model.eval()
         logger.info("BiRefNet successfully compiled and cached in-memory.")
         return model
@@ -105,15 +106,15 @@ def validate_inputs(target_role, core_skills, achievement):
     """Fast, local validation layer to block obvious spam, empty fields, or prompt injections."""
     if not target_role.strip() or not core_skills.strip() or not achievement.strip():
         return False, "All input fields must be filled out before running optimization."
-        
+
     if len(target_role) < 3 or len(achievement) < 10:
         return False, "Please provide a more descriptive role and accomplishment to give the AI context."
-        
+
     injection_keywords = ["ignore previous", "system prompt", "developer instruction", "override instructions"]
     combined_inputs = f"{target_role} {core_skills} {achievement}".lower()
     if any(keyword in combined_inputs for keyword in injection_keywords):
         return False, "Unsupported input commands detected. Please stick purely to career experience."
-        
+
     return True, ""
 
 # --- Helper Functions ---
@@ -127,7 +128,7 @@ def create_gradient_backdrop(style="neutral_gray", size=(1024, 1024)):
         color1, color2 = (11, 40, 41), (41, 108, 104)      # Dark Forest Teal to Warm Muted Teal
     else:
         color1, color2 = (25, 25, 25), (85, 85, 85)        # Rich Charcoal to Medium Gray
-        
+
     for y in range(height):
         ratio = y / height
         r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
@@ -156,7 +157,7 @@ def generate_fallback_banner(industry, color_palette_name):
         g = int(c1[1] * (1 - ratio) + c2[1] * ratio)
         b = int(c1[2] * (1 - ratio) + c2[2] * ratio)
         draw.line([(0, y), (1584, y)], fill=(r, g, b))
-        
+
     random.seed(hash(industry))
     for _ in range(12):
         x1, y1 = random.randint(0, 1584), random.randint(0, 396)
@@ -183,13 +184,13 @@ def optimize_linkedin_text(target_role, core_skills, achievement, style, industr
 
     from openai import OpenAI
     client = OpenAI(api_key=api_key)
-    
+
     # 2. Retrieve Context-Specific Knowledge
     context_data = INDUSTRY_KNOWLEDGE_BASE.get(industry, INDUSTRY_KNOWLEDGE_BASE["Tech & Software"])
     industry_keywords = ", ".join(context_data["keywords"])
-    
+
     system_prompt = f"""You are an elite LinkedIn copywriter and executive recruiter. Your goal is to optimize professional profiles.
-    
+
 Your writing MUST conform to these strict industry guidelines:
 - Dynamically incorporate these high-performing search keywords where appropriate: {industry_keywords}.
 - Strictly avoid overused corporate buzzwords like 'passionate', 'synergistic', 'dynamic', or 'results-driven'.
@@ -243,15 +244,15 @@ If the user input is offensive, completely off-topic (not about career, profiles
         )
         latency = (time.time() - start_time) * 1000
         data = json.loads(response.choices[0].message.content)
-        
+
         # Check for Model Safety Refusal Status
         if data.get("status") == "error":
             log_api_transaction("OpenAI-GPT4o", "refused_by_model", latency)
             return "", data.get("error_message", "Invalid input detected."), []
-            
+
         log_api_transaction("OpenAI-GPT4o", "success", latency, {"keyword_count": len(data.get("extracted_keywords", []))})
         return data.get("headline", ""), data.get("summary", ""), data.get("extracted_keywords", [])
-        
+
     except Exception as e:
         latency = (time.time() - start_time) * 1000
         log_api_transaction("OpenAI-GPT4o", "exception_failure", latency, {"error": str(e)})
@@ -261,7 +262,7 @@ If the user input is offensive, completely off-topic (not about career, profiles
 def process_headshot(image, bg_type, gradient_preset, solid_color):
     if image is None: 
         return None
-    
+
     # 1. Enforce resolution caps to protect free-tier CPU constraints
     max_size = 1024
     w, h = image.size
@@ -331,7 +332,7 @@ with tab1:
         achievement = st.text_area("What is one major professional/academic accomplishment?")
         style = st.selectbox("Working Style Preset", ["Professional & Direct", "Creative & Innovative", "Warm & Collaborative"])
         btn = st.button("Generate Professional Copy", type="primary")
-        
+
     with col2:
         if btn:
             with st.spinner("Writing optimized content..."):
@@ -339,7 +340,7 @@ with tab1:
                 st.session_state.headline = h_out
                 st.session_state.summary = s_out
                 st.session_state.keywords = k_out
-        
+
         # Elements pull from session state so data does not vanish when changing parameters/tabs
         st.text_input("Optimized LinkedIn Headline", value=st.session_state.headline)
         st.text_area("LinkedIn 'About' Summary", value=st.session_state.summary, height=250)
@@ -351,30 +352,30 @@ with tab2:
     with col1:
         uploaded_file = st.file_uploader("Upload Casual Headshot", type=["jpg", "png", "jpeg"])
         bg_type = st.radio("Backdrop Type", ["Solid Color", "Gradient Studio Backdrop"])
-        
+
         if bg_type == "Solid Color":
             solid_color = st.color_picker("Pick a background color", "#1E3A8A")
             gradient_style = None
         else:
             gradient_style = st.selectbox("Select Gradient Preset", ["Neutral Charcoal Glow", "Corporate Navy Glow", "Modern Teal Glow"])
             solid_color = None
-            
+
         process_btn = st.button("Process Studio Portrait", type="primary")
-        
+
     with col2:
         if uploaded_file and process_btn:
             with st.spinner("Extracting background with AI..."):
                 input_img = Image.open(uploaded_file)
                 output_img = process_headshot(input_img, bg_type, gradient_style, solid_color)
-                
+
                 if output_img:
                     st.image(output_img, caption="Your New Studio Profile Picture", width=400)
-                    
+
                     # Convert canvas asset into dynamic download buffer
                     buf = io.BytesIO()
                     output_img.save(buf, format="JPEG")
                     byte_im = buf.getvalue()
-                    
+
                     st.download_button(
                         label="📥 Download Profile Image",
                         data=byte_im,
@@ -397,7 +398,7 @@ with tab3:
             key="banner_palette"
         )
         btn_banner = st.button("Generate Custom Banner", type="primary")
-        
+
     with col2:
         if btn_banner:
             with st.spinner("Rendering your professional abstract banner..."):
@@ -405,19 +406,19 @@ with tab3:
                 api_url = "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell"
                 hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HF_API_KEY")
                 headers = {"Authorization": f"Bearer {hf_token}"} if hf_token else {}
-                
+
                 prompt = (
                     f"A sleek, professional minimalist banner for the {banner_industry} industry. "
                     f"Abstract geometric art backdrop styling, color scheme: {palette}. "
                     f"Clean lines, professional composition, modern graphic background, "
                     f"no text, no letters, no logos, banner layout, 1584x396."
                 )
-                
+
                 payload = {
                     "inputs": prompt,
                     "parameters": {"width": 1024, "height": 512}
                 }
-                
+
                 banner_img = None
                 start_banner_time = time.time()
                 try:
@@ -430,22 +431,23 @@ with tab3:
                         log_api_transaction("HF-Flux-Schnell", "non_200_failure", (time.time() - start_banner_time) * 1000, {"status_code": response.status_code})
                 except Exception as e:
                     log_api_transaction("HF-Flux-Schnell", "exception_failure", (time.time() - start_banner_time) * 1000, {"error": str(e)})
-                
+
                 # Check if fallback is required
                 if banner_img is None:
                     banner_img = generate_fallback_banner(banner_industry, palette)
-                
+
                 # Display output and enable seamless download
-                st.image(banner_img, caption="Custom Banner (Scaled to LinkedIn standard 1584 x 396 px)", use_container_width=True)
-                
+                st.image(banner_img, caption="Custom Banner (Scaled to LinkedIn standard 1584 x 396 px)", width="stretch")
+
                 # Format to buffer
                 buf_banner = io.BytesIO()
                 banner_img.save(buf_banner, format="PNG")
                 byte_banner = buf_banner.getvalue()
-                
+
                 st.download_button(
                     label="📥 Download Banner Image",
                     data=byte_banner,
                     file_name="linkedin_custom_banner.png",
                     mime="image/png"
                 )
+
