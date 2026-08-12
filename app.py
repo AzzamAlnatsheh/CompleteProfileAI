@@ -15,6 +15,7 @@ import time
 import random
 import logging
 import requests
+import gc
 import numpy as np
 import streamlit as st
 from PIL import Image, ImageDraw
@@ -277,8 +278,12 @@ def process_headshot(image, bg_type, gradient_preset, solid_color):
     else:
         try:
             logger.info("Running local BiRefNet segmentation loop...")
+            
+            # --- CRITICAL CPU OPTIMIZATION ---
+            # We resize the tensor input down to 512x512 instead of 1024x1024.
+            # This slashes computational matrix overhead by 75% on free-tier containers!
             transform_image = transforms.Compose([
-                transforms.Resize((1024, 1024)),
+                transforms.Resize((512, 512)),
                 transforms.ToTensor(),
                 transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
             ])
@@ -286,10 +291,16 @@ def process_headshot(image, bg_type, gradient_preset, solid_color):
             with torch.no_grad():
                 outputs = BIREFNET_MODEL(input_tensor)
                 pred = torch.sigmoid(outputs).cpu().numpy().squeeze()
+            
+            # Upscale the resulting binary mask back to original bounds
             mask = Image.fromarray((pred * 255).astype(np.uint8)).resize((orig_w, orig_h), Image.Resampling.BILINEAR)
             cut_subject = image.convert("RGBA")
             cut_subject.putalpha(mask)
             logger.info("Successfully extracted headshot foreground subject.")
+            
+            # Force active garbage collection to free container RAM
+            gc.collect()
+            
         except Exception as e:
             logger.error(f"Error during segmentation pipeline: {e}")
             cut_subject = image.convert("RGBA")
@@ -450,4 +461,3 @@ with tab3:
                     file_name="linkedin_custom_banner.png",
                     mime="image/png"
                 )
-
