@@ -278,7 +278,7 @@ def process_headshot(image, bg_type, gradient_preset, solid_color):
     else:
         try:
             logger.info("Running local BiRefNet segmentation loop...")
-            
+
             # --- CRITICAL CPU OPTIMIZATION ---
             # We resize the tensor input down to 512x512 instead of 1024x1024.
             # This slashes computational matrix overhead by 75% on free-tier containers!
@@ -290,17 +290,29 @@ def process_headshot(image, bg_type, gradient_preset, solid_color):
             input_tensor = transform_image(image.convert("RGB")).unsqueeze(0).to(DEVICE)
             with torch.no_grad():
                 outputs = BIREFNET_MODEL(input_tensor)
-                pred = torch.sigmoid(outputs).cpu().numpy().squeeze()
-            
+                
+                # --- CRITICAL BUG FIX FOR SIGMOID EXCEPTION ---
+                # BiRefNet outputs are returned as a list of stage tensors.
+                # We dynamically unpack and grab the final prediction tensor (logits).
+                if hasattr(outputs, "logits"):
+                    pred = outputs.logits[-1] if isinstance(outputs.logits, list) else outputs.logits
+                elif isinstance(outputs, (list, tuple)):
+                    pred = outputs[-1]
+                else:
+                    pred = outputs
+                
+                # Apply sigmoid safely onto the single prediction tensor
+                pred = torch.sigmoid(pred).cpu().numpy().squeeze()
+
             # Upscale the resulting binary mask back to original bounds
             mask = Image.fromarray((pred * 255).astype(np.uint8)).resize((orig_w, orig_h), Image.Resampling.BILINEAR)
             cut_subject = image.convert("RGBA")
             cut_subject.putalpha(mask)
             logger.info("Successfully extracted headshot foreground subject.")
-            
+
             # Force active garbage collection to free container RAM
             gc.collect()
-            
+
         except Exception as e:
             logger.error(f"Error during segmentation pipeline: {e}")
             cut_subject = image.convert("RGBA")
