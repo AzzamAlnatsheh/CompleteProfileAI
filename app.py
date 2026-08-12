@@ -153,8 +153,8 @@ def create_gradient_backdrop(style="neutral_gray", size=(1024, 1024)):
     for y in range(height):
         ratio = y / height
         r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-        g = int(color1 * (1 - ratio) + color2 * ratio)
-        b = int(color1 * (1 - ratio) + color2 * ratio)
+        g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
+        b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
         for x in range(width):
             base.putpixel((x, y), (r, g, b))
     return base
@@ -175,8 +175,8 @@ def generate_fallback_banner(industry, color_palette_name):
     for y in range(396):
         ratio = y / 396
         r = int(c1[0] * (1 - ratio) + c2[0] * ratio)
-        g = int(c1 * (1 - ratio) + c2 * ratio)
-        b = int(c1 * (1 - ratio) + c2 * ratio)
+        g = int(c1[1] * (1 - ratio) + c2[1] * ratio)
+        b = int(c1[2] * (1 - ratio) + c2[2] * ratio)
         draw.line([(0, y), (1584, y)], fill=(r, g, b))
 
     random.seed(hash(industry))
@@ -367,9 +367,9 @@ def generate_banner_with_gemini(inputs, uploaded_image):
     try:
         from google import genai
         from google.genai import types
-        
+
         client = genai.Client(api_key=gemini_key)
-        
+
         # Act as a professional LinkedIn Banner Designer prompt mapping
         prompt = f"""
 Act as a professional LinkedIn Banner Designer.
@@ -398,7 +398,7 @@ Layout Rules (Applied ONLY to the middle 30% of the image):
 4. Social Proof: Place logos or stats in a small, clean row at the bottom-right of the strip.
 5. Background (Vibrant & Geometric): Do not use a plain, flat background. Create a dynamic and modern background using your brand colors. Incorporate subtle geometric shapes, abstract lines, or a professional gradient pattern to add depth, energy, and a high-end feel. Ensure these background elements are subtle enough behind the text to maintain perfect legibility.
 """
-        
+
         contents = [prompt]
         if uploaded_image is not None:
             # Downscale input slightly for safety before sending over network
@@ -406,9 +406,9 @@ Layout Rules (Applied ONLY to the middle 30% of the image):
             if w > 800 or h > 800:
                 uploaded_image.thumbnail((800, 800))
             contents.append(uploaded_image)
-            
+
         logger.info("Sending multimodal request to gemini-3.1-flash-image (Nano Banana 2)...")
-        
+
         response = client.models.generate_content(
             model='gemini-3.1-flash-image',
             contents=contents,
@@ -420,7 +420,7 @@ Layout Rules (Applied ONLY to the middle 30% of the image):
                 )
             )
         )
-        
+
         # Parse the response to extract generated image bytes
         image_bytes = None
         for candidate in response.candidates:
@@ -430,7 +430,7 @@ Layout Rules (Applied ONLY to the middle 30% of the image):
                     break
             if image_bytes:
                 break
-                
+
         if image_bytes:
             banner_img = Image.open(io.BytesIO(image_bytes))
             # Resize the 16:9 output to standard LinkedIn Dimensions (1584 x 396)
@@ -438,7 +438,7 @@ Layout Rules (Applied ONLY to the middle 30% of the image):
         else:
             logger.warning("No image data found in Nano Banana 2 response parts.")
             return None
-            
+
     except Exception as e:
         logger.error(f"Error during Nano Banana 2 generation: {e}")
         return None
@@ -631,7 +631,7 @@ with tab3:
             st.markdown(f"**Palette:** {st.session_state.banner_inputs.get('colors')}")
             st.markdown(f"**Photo Changes:** {st.session_state.banner_inputs.get('photo_description')}")
 
-        col_btn1, col_btn2 = st.columns()
+        col_btn1, col_btn2 = st.columns(2)
         with col_btn1:
             btn_generate = st.button("🎨 Generate Banner", type="primary")
         with col_btn2:
@@ -659,10 +659,10 @@ with tab3:
                         uploaded_image = Image.open(st.session_state.banner_headshot)
                     except Exception as img_err:
                         logger.error(f"Failed to open uploaded banner headshot: {img_err}")
-                
+
                 # Generate banner using gemini-3.1-flash-image
                 banner_img = generate_banner_with_gemini(st.session_state.banner_inputs, uploaded_image)
-                
+
                 # Check if fallback is required
                 if banner_img is None:
                     logger.warning("Gemini generation failed. Executing fallback canvas generator.")
@@ -696,7 +696,7 @@ with tab3:
             caption="Custom Banner (Scaled to LinkedIn standard 1584 x 396 px on a 16:9 crop-ready canvas)", 
             width="stretch"
         )
-        
+
         # Download button
         st.download_button(
             label="📥 Download LinkedIn Banner Image (PNG)",
