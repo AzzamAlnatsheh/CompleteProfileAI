@@ -27,12 +27,15 @@ os.environ["MKL_NUM_THREADS"] = "1"
 import torch
 from torchvision import transforms
 
-# --- Smart Google GenAI SDK Import ---
-try:
-    from google import genai
-    from google.genai import types
-except ImportError:
-    pass
+# =========================================================================
+# FUTURE CHATBOT BACKEND (Commented until Google AI License is obtained)
+# =========================================================================
+# try:
+#     from google import genai
+#     from google.genai import types
+# except ImportError:
+#     pass
+# =========================================================================
 
 # --- Initialize Session State for AI Text Persistence ---
 if "headline" not in st.session_state:
@@ -42,18 +45,21 @@ if "summary" not in st.session_state:
 if "keywords" not in st.session_state:
     st.session_state.keywords = []
 
-# --- Initialize Session State for Interactive Banner Chat ---
-if "banner_messages" not in st.session_state:
-    st.session_state.banner_messages = [
-        {
-            "role": "assistant",
-            "content": "Hello! I am your professional **LinkedIn Banner Designer**. I will help you design a high-converting, visually vibrant, and professional LinkedIn banner centered within a crop-ready 16:9 canvas.\n\nTo begin, please tell me: **1. What is your Primary Headline?**"
-        }
-    ]
-if "banner_step" not in st.session_state:
-    st.session_state.banner_step = 1
-if "banner_inputs" not in st.session_state:
-    st.session_state.banner_inputs = {}
+# =========================================================================
+# FUTURE CHATBOT STATE INITIALIZATION (Commented until activated)
+# =========================================================================
+# if "banner_messages" not in st.session_state:
+#     st.session_state.banner_messages = [
+#         {
+#             "role": "assistant",
+#             "content": "Hello! I am your professional **LinkedIn Banner Designer**. I will help you design a high-converting, visually vibrant, and professional LinkedIn banner centered within a crop-ready 16:9 canvas.\n\nTo begin, please tell me: **1. What is your Primary Headline?**"
+#         }
+#     ]
+# if "banner_step" not in st.session_state:
+#     st.session_state.banner_step = 1
+# if "banner_inputs" not in st.session_state:
+#     st.session_state.banner_inputs = {}
+# =========================================================================
 
 # --- Logging Configuration ---
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -152,7 +158,6 @@ def create_gradient_backdrop(style="neutral_gray", size=(1024, 1024)):
 
     for y in range(height):
         ratio = y / height
-        # FIXED: Correctly added slice indexing [1] and [2] for Green and Blue channels
         r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
         g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
         b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
@@ -175,7 +180,6 @@ def generate_fallback_banner(industry, color_palette_name):
     c1, c2, c3 = colors
     for y in range(396):
         ratio = y / 396
-        # FIXED: Correctly added slice indexing [1] and [2] for Green and Blue channels to prevent tuple sequence multiplying error
         r = int(c1[0] * (1 - ratio) + c2[0] * ratio)
         g = int(c1[1] * (1 - ratio) + c2[1] * ratio)
         b = int(c1[2] * (1 - ratio) + c2[2] * ratio)
@@ -358,93 +362,95 @@ def process_headshot(image, bg_type, gradient_preset, solid_color):
         background.paste(cut_subject, (0, 0), cut_subject)
         return background
 
-# --- Multimodal Banner Generation Engine: Nano Banana 2 ---
-def generate_banner_with_gemini(inputs, uploaded_image):
-    """Generates the banner image using gemini-3.1-flash-image (Nano Banana 2) with multimodal inputs."""
-    # We strictly read ONLY a valid Google-owned API key. We removed the fallback to OPENAI keys to prevent 400 key authentication failures.
-    gemini_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-    if not gemini_key:
-        logger.warning("Google/Gemini API Key is missing. Bypassing cloud API call and routing to local geometric banner generator.")
-        return None
-
-    try:
-        from google import genai
-        from google.genai import types
-
-        client = genai.Client(api_key=gemini_key)
-
-        # Act as a professional LinkedIn Banner Designer prompt mapping
-        prompt = f"""
-Act as a professional LinkedIn Banner Designer.
-
-Your goal is to generate a high-converting, visually vibrant, and professional LinkedIn banner that fits the 1584 x 396 pixel dimension perfectly. The design should be dynamic and stand out.
-
-Because you cannot generate this exact aspect ratio, you must generate a Wide (16:9) image, but you must concentrate the design into a thin horizontal strip in the absolute vertical center of the canvas.
-
-To ensure the user can crop this correctly:
-1. The top 35% of the image must be empty background color.
-2. The bottom 35% of the image must be empty background color.
-3. All content (Text, CTA, Face) must be squeezed into the middle 30% strip.
-
-Details to customize the design:
-1. Primary Headline: "{inputs.get('headline')}"
-2. Secondary Tagline: "{inputs.get('tagline')}"
-3. Call to Action (CTA) text: "{inputs.get('cta')}"
-4. Social Proof, stats, or client logos: "{inputs.get('social_proof')}"
-5. Brand Colors (Hex codes or descriptions): "{inputs.get('colors')}"
-6. Photographic Subject: Use the attached user photo and apply these professional changes to the appearance: "{inputs.get('photo_description')}"
-
-Layout Rules (Applied ONLY to the middle 30% of the image):
-1. CTA Placement (Strict): The CTA button must be anchored precisely in the top-left corner of the central strip. It should be positioned high up, above the level of the subject's shoulder.
-2. Subject Appearance (Realistic & Professional): Place the modified user photo in the center-left of the strip. Apply the requested changes but maintain a high-quality, realistic photographic style. Do NOT apply cartoon filters.
-3. Headline and Tagline: Place the Headline on the right side of the strip, with the Tagline directly below it. Keep the text compact.
-4. Social Proof: Place logos or stats in a small, clean row at the bottom-right of the strip.
-5. Background (Vibrant & Geometric): Do not use a plain, flat background. Create a dynamic and modern background using your brand colors. Incorporate subtle geometric shapes, abstract lines, or a professional gradient pattern to add depth, energy, and a high-end feel. Ensure these background elements are subtle enough behind the text to maintain perfect legibility.
-"""
-
-        contents = [prompt]
-        if uploaded_image is not None:
-            # Downscale input slightly for safety before sending over network
-            w, h = uploaded_image.size
-            if w > 800 or h > 800:
-                uploaded_image.thumbnail((800, 800))
-            contents.append(uploaded_image)
-
-        logger.info("Sending multimodal request to gemini-3.1-flash-image (Nano Banana 2)...")
-
-        response = client.models.generate_content(
-            model='gemini-3.1-flash-image',
-            contents=contents,
-            config=types.GenerateContentConfig(
-                response_modalities=['TEXT', 'IMAGE'],
-                image_config=types.ImageConfig(
-                    aspect_ratio="16:9",
-                    image_size="1K"
-                )
-            )
-        )
-
-        # Parse the response to extract generated image bytes
-        image_bytes = None
-        for candidate in response.candidates:
-            for part in candidate.content.parts:
-                if part.inline_data and part.inline_data.data:
-                    image_bytes = part.inline_data.data
-                    break
-            if image_bytes:
-                break
-
-        if image_bytes:
-            banner_img = Image.open(io.BytesIO(image_bytes))
-            # Resize the 16:9 output to standard LinkedIn Dimensions (1584 x 396)
-            return banner_img.resize((1584, 396), Image.Resampling.LANCZOS)
-        else:
-            logger.warning("No image data found in Nano Banana 2 response parts.")
-            return None
-
-    except Exception as e:
-        logger.error(f"Error during Nano Banana 2 generation: {e}")
-        return None
+# =========================================================================
+# FUTURE CHATBOT AND NANO BANANA 2 LOGIC (Commented until key is acquired)
+# =========================================================================
+# def generate_banner_with_gemini(inputs, uploaded_image):
+#     """Generates the banner image using gemini-3.1-flash-image (Nano Banana 2) with multimodal inputs."""
+#     gemini_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+#     if not gemini_key:
+#         logger.warning("Google/Gemini API Key is missing. Bypassing cloud API call and routing to local geometric banner generator.")
+#         return None
+# 
+#     try:
+#         from google import genai
+#         from google.genai import types
+# 
+#         client = genai.Client(api_key=gemini_key)
+# 
+#         # Act as a professional LinkedIn Banner Designer prompt mapping
+#         prompt = f"""
+# Act as a professional LinkedIn Banner Designer.
+# 
+# Your goal is to generate a high-converting, visually vibrant, and professional LinkedIn banner that fits the 1584 x 396 pixel dimension perfectly. The design should be dynamic and stand out.
+# 
+# Because you cannot generate this exact aspect ratio, you must generate a Wide (16:9) image, but you must concentrate the design into a thin horizontal strip in the absolute vertical center of the canvas.
+# 
+# To ensure the user can crop this correctly:
+# 1. The top 35% of the image must be empty background color.
+# 2. The bottom 35% of the image must be empty background color.
+# 3. All content (Text, CTA, Face) must be squeezed into the middle 30% strip.
+# 
+# Details to customize the design:
+# 1. Primary Headline: "{inputs.get('headline')}"
+# 2. Secondary Tagline: "{inputs.get('tagline')}"
+# 3. Call to Action (CTA) text: "{inputs.get('cta')}"
+# 4. Social Proof, stats, or client logos: "{inputs.get('social_proof')}"
+# 5. Brand Colors (Hex codes or descriptions): "{inputs.get('colors')}"
+# 6. Photographic Subject: Use the attached user photo and apply these professional changes to the appearance: "{inputs.get('photo_description')}"
+# 
+# Layout Rules (Applied ONLY to the middle 30% of the image):
+# 1. CTA Placement (Strict): The CTA button must be anchored precisely in the top-left corner of the central strip. It should be positioned high up, above the level of the subject's shoulder.
+# 2. Subject Appearance (Realistic & Professional): Place the modified user photo in the center-left of the strip. Apply the requested changes but maintain a high-quality, realistic photographic style. Do NOT apply cartoon filters.
+# 3. Headline and Tagline: Place the Headline on the right side of the strip, with the Tagline directly below it. Keep the text compact.
+# 4. Social Proof: Place logos or stats in a small, clean row at the bottom-right of the strip.
+# 5. Background (Vibrant & Geometric): Do not use a plain, flat background. Create a dynamic and modern background using your brand colors. Incorporate subtle geometric shapes, abstract lines, or a professional gradient pattern to add depth, energy, and a high-end feel. Ensure these background elements are subtle enough behind the text to maintain perfect legibility.
+# """
+# 
+#         contents = [prompt]
+#         if uploaded_image is not None:
+#             # Downscale input slightly for safety before sending over network
+#             w, h = uploaded_image.size
+#             if w > 800 or h > 800:
+#                 uploaded_image.thumbnail((800, 800))
+#             contents.append(uploaded_image)
+# 
+#         logger.info("Sending multimodal request to gemini-3.1-flash-image (Nano Banana 2)...")
+# 
+#         response = client.models.generate_content(
+#             model='gemini-3.1-flash-image',
+#             contents=contents,
+#             config=types.GenerateContentConfig(
+#                 response_modalities=['TEXT', 'IMAGE'],
+#                 image_config=types.ImageConfig(
+#                     aspect_ratio="16:9",
+#                     image_size="1K"
+#                 )
+#             )
+#         )
+# 
+#         # Parse the response to extract generated image bytes
+#         image_bytes = None
+#         for candidate in response.candidates:
+#             for part in candidate.content.parts:
+#                 if part.inline_data and part.inline_data.data:
+#                     image_bytes = part.inline_data.data
+#                     break
+#             if image_bytes:
+#                 break
+# 
+#         if image_bytes:
+#             banner_img = Image.open(io.BytesIO(image_bytes))
+#             # Resize the 16:9 output to standard LinkedIn Dimensions (1584 x 396)
+#             return banner_img.resize((1584, 396), Image.Resampling.LANCZOS)
+#         else:
+#             logger.warning("No image data found in Nano Banana 2 response parts.")
+#             return None
+# 
+#     except Exception as e:
+#         logger.error(f"Error during Nano Banana 2 generation: {e}")
+#         return None
+# =========================================================================
 
 # --- STREAMLIT UI DESIGN ---
 st.set_page_config(page_title="CompleteProfile AI", layout="wide")
@@ -528,182 +534,226 @@ with tab2:
                         mime=mime_type
                     )
 
+# --- REVERTED TAB 3: 100% Free Procedural Banner Generator ---
 with tab3:
-    st.write("### 🎨 Interactive Banner Designer Chatbot")
-    st.write("Collaborate step-by-step with our virtual design assistant to generate a perfectly formatted, crop-ready LinkedIn banner.")
+    st.write("### 🎨 Procedural Banner Artist")
+    st.write("Generate a minimalist, beautifully scaled abstract banner (1584 x 396 px) matched to your target industry focus.")
 
-    # 1. Render Scrollable Conversational Thread (Kept purely textual for UX)
-    chat_container = st.container()
-    with chat_container:
-        for msg in st.session_state.banner_messages:
-            with st.chat_message(msg["role"]):
-                st.markdown(msg["content"])
+    col1, col2 = st.columns(2)
+    with col1:
+        input_industry = st.selectbox(
+            "Your Target Industry Focus", 
+            ["Tech & Software", "Finance & Corporate", "Creative Design", "Healthcare", "Education & Non-Profit"],
+            key="banner_industry_reverted"
+        )
+        input_palette = st.radio(
+            "Brand Palette Style", 
+            ["Corporate Blue", "Creative Teal", "Tech Slate", "Creative Amber"],
+            key="banner_palette_reverted"
+        )
+        btn_banner = st.button("Generate Custom Banner", type="primary")
 
-    # 2. Sequential Chat Steps State Machine
-    step = st.session_state.banner_step
-
-    if step <= 5:
-        # Prompt user response using text input bar
-        if prompt := st.chat_input("Enter your answer..."):
-            # Record user answer
-            st.session_state.banner_messages.append({"role": "user", "content": prompt})
-
-            # Map input
-            if step == 1:
-                st.session_state.banner_inputs["headline"] = prompt
-                st.session_state.banner_messages.append({
-                    "role": "assistant",
-                    "content": "Excellent headline. **2. What is your Secondary Tagline?**"
-                })
-                st.session_state.banner_step = 2
-            elif step == 2:
-                st.session_state.banner_inputs["tagline"] = prompt
-                st.session_state.banner_messages.append({
-                    "role": "assistant",
-                    "content": "Great tagline! **3. What is the Call to Action (CTA) text?** (e.g. 'DM to collaborate', 'Visit my portfolio')"
-                })
-                st.session_state.banner_step = 3
-            elif step == 3:
-                st.session_state.banner_inputs["cta"] = prompt
-                st.session_state.banner_messages.append({
-                    "role": "assistant",
-                    "content": "Noted! **4. What Social Proof, stats, or client logos should be included?** (e.g. 'Ex-Google', '5+ Years Exp', 'Built 20+ apps')"
-                })
-                st.session_state.banner_step = 4
-            elif step == 4:
-                st.session_state.banner_inputs["social_proof"] = prompt
-                st.session_state.banner_messages.append({
-                    "role": "assistant",
-                    "content": "Got it. **5. What are your Brand Colours?** (Please supply Hex codes, e.g. `#1E3A8A and #FFBF00` or descriptive names, e.g. `Dark Corporate Blue and gold`)"
-                })
-                st.session_state.banner_step = 5
-            elif step == 5:
-                st.session_state.banner_inputs["colors"] = prompt
-                st.session_state.banner_messages.append({
-                    "role": "assistant",
-                    "content": "Perfect. **6. Please upload a realistic photo of yourself and specify any changes.** Use the form below to upload your headshot portrait and describe any modifications you want made to your appearance (e.g. 'Change my casual t-shirt to a dark corporate suit')."
-                })
-                st.session_state.banner_step = 6
-
-            st.rerun()
-
-    elif step == 6:
-        # Prompt for image uploads and modifications
-        st.write("---")
-        st.info("🎨 Step 6: Provide your Professional Headshot Portrait Details")
-        col_img, col_desc = st.columns(2)
-
-        with col_img:
-            # We assign this to the session state explicitly via the key parameter
-            banner_headshot = st.file_uploader("Upload Headshot Photo", type=["jpg", "png", "jpeg"], key="banner_headshot")
-        with col_desc:
-            photo_edits = st.text_area(
-                "Appearance Modifications", 
-                value="Change my casual wear to a tailored dark blue corporate suit, neat hair, professional executive setup.",
-                help="Describe any attire changes or background enhancements you want the visual artist to apply."
-            )
-
-        submit_photo = st.button("Submit Profile Photo & Details", type="primary")
-
-        if submit_photo:
-            st.session_state.banner_inputs["photo_description"] = photo_edits
-            st.session_state.banner_messages.append({
-                "role": "user",
-                "content": f"[Photo Provided] with requested modifications: *{photo_edits}*"
-            })
-            st.session_state.banner_messages.append({
-                "role": "assistant",
-                "content": "All design elements collected! Let's generate your custom-cropped, 16:9 centered LinkedIn banner now. Click the **'Generate LinkedIn Banner'** button below to start the visual pipeline."
-            })
-            st.session_state.banner_step = 7
-            st.rerun()
-
-    elif step == 7:
-        st.write("---")
-        st.success("🎉 All Details Compiled Successfully!")
-
-        # Display summary cards of collected details
-        col_s1, col_s2, col_s3 = st.columns(3)
-        with col_s1:
-            st.markdown(f"**Headline:** {st.session_state.banner_inputs.get('headline')}")
-            st.markdown(f"**Tagline:** {st.session_state.banner_inputs.get('tagline')}")
-        with col_s2:
-            st.markdown(f"**CTA:** {st.session_state.banner_inputs.get('cta')}")
-            st.markdown(f"**Social Proof:** {st.session_state.banner_inputs.get('social_proof')}")
-        with col_s3:
-            st.markdown(f"**Palette:** {st.session_state.banner_inputs.get('colors')}")
-            st.markdown(f"**Photo Changes:** {st.session_state.banner_inputs.get('photo_description')}")
-
-        col_btn1, col_btn2 = st.columns(2)
-        with col_btn1:
-            btn_generate = st.button("🎨 Generate Banner", type="primary")
-        with col_btn2:
-            if st.button("🔄 Reset Chat", type="secondary"):
-                st.session_state.banner_messages = [
-                    {
-                        "role": "assistant",
-                        "content": "Hello! I am your professional **LinkedIn Banner Designer**. I will help you design a high-converting, visually vibrant, and professional LinkedIn banner centered within a crop-ready 16:9 canvas.\n\nTo begin, please tell me: **1. What is your Primary Headline?**"
-                    }
-                ]
-                st.session_state.banner_step = 1
-                st.session_state.banner_inputs = {}
-                if "last_generated_banner" in st.session_state:
-                    del st.session_state.last_generated_banner
-                if "last_generated_banner_pil" in st.session_state:
-                    del st.session_state.last_generated_banner_pil
-                st.rerun()
-
-        if btn_generate:
-            with st.spinner("Collaborating with the visual artist engine (Nano Banana 2)..."):
-                # Load the uploaded file if present
-                uploaded_image = None
-                if "banner_headshot" in st.session_state and st.session_state.banner_headshot is not None:
-                    try:
-                        uploaded_image = Image.open(st.session_state.banner_headshot)
-                    except Exception as img_err:
-                        logger.error(f"Failed to open uploaded banner headshot: {img_err}")
-
-                # Generate banner using gemini-3.1-flash-image
-                banner_img = generate_banner_with_gemini(st.session_state.banner_inputs, uploaded_image)
-
-                # Check if fallback is required
-                if banner_img is None:
-                    logger.warning("Gemini generation bypassed or failed. Executing fallback geometric canvas generator.")
-                    banner_img = generate_fallback_banner(
-                        st.session_state.banner_inputs.get("headline", "Professional"),
-                        "Corporate Blue"
-                    )
+    with col2:
+        if btn_banner:
+            with st.spinner("Rendering your professional abstract banner..."):
+                # Run the standard geometric PIL renderer directly - completely free and offline
+                banner_img = generate_fallback_banner(input_industry, input_palette)
 
                 # Format to buffer for st.download_button
                 buf_banner = io.BytesIO()
                 banner_img.save(buf_banner, format="PNG")
                 byte_banner = buf_banner.getvalue()
 
-                # Add final confirmation block to conversation history
-                st.session_state.banner_messages.append({
-                    "role": "assistant",
-                    "content": "🎨 Your banner generation process is complete! The custom-designed 16:9 banner has been rendered below, outside the chat panel. Please scroll down to review and download your file."
-                })
+                # Render output image
+                st.image(
+                    banner_img, 
+                    caption=f"Custom {input_industry} Banner (Standard LinkedIn 1584 x 396 px)", 
+                    use_container_width=True
+                )
 
-                # Keep active session state image bytes for rendering download button
-                st.session_state.last_generated_banner = byte_banner
-                st.session_state.last_generated_banner_pil = banner_img
-                st.rerun()
+                # Render download button
+                st.download_button(
+                    label="📥 Download LinkedIn Banner Image (PNG)",
+                    data=byte_banner,
+                    file_name="linkedin_custom_banner.png",
+                    mime="image/png"
+                )
 
-    # 3. Persistent Banner Display at the very bottom of Tab 3 (Fixes UI/UX layout)
-    if "last_generated_banner_pil" in st.session_state:
-        st.write("---")
-        st.write("### 🖼️ Your Custom LinkedIn Banner")
-        st.image(
-            st.session_state.last_generated_banner_pil, 
-            caption="Custom Banner (Scaled to LinkedIn standard 1584 x 396 px on a 16:9 crop-ready canvas)", 
-            width="stretch"
-        )
-
-        # Download button
-        st.download_button(
-            label="📥 Download LinkedIn Banner Image (PNG)",
-            data=st.session_state.last_generated_banner,
-            file_name="linkedin_custom_banner_16_9.png",
-            mime="image/png"
-        )
+# =========================================================================
+# FUTURE INTERACTIVE CHATBOT LAYOUT (Commented until activated)
+# =========================================================================
+#     # 1. Render Scrollable Conversational Thread (Kept purely textual for UX)
+#     chat_container = st.container()
+#     with chat_container:
+#         for msg in st.session_state.banner_messages:
+#             with st.chat_message(msg["role"]):
+#                 st.markdown(msg["content"])
+# 
+#     # 2. Sequential Chat Steps State Machine
+#     step = st.session_state.banner_step
+# 
+#     if step <= 5:
+#         # Prompt user response using text input bar
+#         if prompt := st.chat_input("Enter your answer..."):
+#             # Record user answer
+#             st.session_state.banner_messages.append({"role": "user", "content": prompt})
+# 
+#             # Map input
+#             if step == 1:
+#                 st.session_state.banner_inputs["headline"] = prompt
+#                 st.session_state.banner_messages.append({
+#                     "role": "assistant",
+#                     "content": "Excellent headline. **2. What is your Secondary Tagline?**"
+#                 })
+#                 st.session_state.banner_step = 2
+#             elif step == 2:
+#                 st.session_state.banner_inputs["tagline"] = prompt
+#                 st.session_state.banner_messages.append({
+#                     "role": "assistant",
+#                     "content": "Great tagline! **3. What is the Call to Action (CTA) text?** (e.g. 'DM to collaborate', 'Visit my portfolio')"
+#                 })
+#                 st.session_state.banner_step = 3
+#             elif step == 3:
+#                 st.session_state.banner_inputs["cta"] = prompt
+#                 st.session_state.banner_messages.append({
+#                     "role": "assistant",
+#                     "content": "Noted! **4. What Social Proof, stats, or client logos should be included?** (e.g. 'Ex-Google', '5+ Years Exp', 'Built 20+ apps')"
+#                 })
+#                 st.session_state.banner_step = 4
+#             elif step == 4:
+#                 st.session_state.banner_inputs["social_proof"] = prompt
+#                 st.session_state.banner_messages.append({
+#                     "role": "assistant",
+#                     "content": "Got it. **5. What are your Brand Colours?** (Please supply Hex codes, e.g. `#1E3A8A and #FFBF00` or descriptive names, e.g. `Dark Corporate Blue and gold`)"
+#                 })
+#                 st.session_state.banner_step = 5
+#             elif step == 5:
+#                 st.session_state.banner_inputs["colors"] = prompt
+#                 st.session_state.banner_messages.append({
+#                     "role": "assistant",
+#                     "content": "Perfect. **6. Please upload a realistic photo of yourself and specify any changes.** Use the form below to upload your headshot portrait and describe any modifications you want made to your appearance (e.g. 'Change my casual t-shirt to a dark corporate suit')."
+#                 })
+#                 st.session_state.banner_step = 6
+# 
+#             st.rerun()
+# 
+#     elif step == 6:
+#         # Prompt for image uploads and modifications
+#         st.write("---")
+#         st.info("🎨 Step 6: Provide your Professional Headshot Portrait Details")
+#         col_img, col_desc = st.columns(2)
+# 
+#         with col_img:
+#             # We assign this to the session state explicitly via the key parameter
+#             banner_headshot = st.file_uploader("Upload Headshot Photo", type=["jpg", "png", "jpeg"], key="banner_headshot")
+#         with col_desc:
+#             photo_edits = st.text_area(
+#                 "Appearance Modifications", 
+#                 value="Change my casual wear to a tailored dark blue corporate suit, neat hair, professional executive setup.",
+#                 help="Describe any attire changes or background enhancements you want the visual artist to apply."
+#             )
+# 
+#         submit_photo = st.button("Submit Profile Photo & Details", type="primary")
+# 
+#         if submit_photo:
+#             st.session_state.banner_inputs["photo_description"] = photo_edits
+#             st.session_state.banner_messages.append({
+#                 "role": "user",
+#                 "content": f"[Photo Provided] with requested modifications: *{photo_edits}*"
+#             })
+#             st.session_state.banner_messages.append({
+#                 "role": "assistant",
+#                 "content": "All design elements collected! Let's generate your custom-cropped, 16:9 centered LinkedIn banner now. Click the **'Generate LinkedIn Banner'** button below to start the visual pipeline."
+#             })
+#             st.session_state.banner_step = 7
+#             st.rerun()
+# 
+#     elif step == 7:
+#         st.write("---")
+#         st.success("🎉 All Details Compiled Successfully!")
+# 
+#         # Display summary cards of collected details
+#         col_s1, col_s2, col_s3 = st.columns(3)
+#         with col_s1:
+#             st.markdown(f"**Headline:** {st.session_state.banner_inputs.get('headline')}")
+#             st.markdown(f"**Tagline:** {st.session_state.banner_inputs.get('tagline')}")
+#         with col_s2:
+#             st.markdown(f"**CTA:** {st.session_state.banner_inputs.get('cta')}")
+#             st.markdown(f"**Social Proof:** {st.session_state.banner_inputs.get('social_proof')}")
+#         with col_s3:
+#             st.markdown(f"**Palette:** {st.session_state.banner_inputs.get('colors')}")
+#             st.markdown(f"**Photo Changes:** {st.session_state.banner_inputs.get('photo_description')}")
+# 
+#         col_btn1, col_btn2 = st.columns(2)
+#         with col_btn1:
+#             btn_generate = st.button("🎨 Generate Banner", type="primary")
+#         with col_btn2:
+#             if st.button("🔄 Reset Chat", type="secondary"):
+#                 st.session_state.banner_messages = [
+#                     {
+#                         "role": "assistant",
+#                         "content": "Hello! I am your professional **LinkedIn Banner Designer**. I will help you design a high-converting, visually vibrant, and professional LinkedIn banner centered within a crop-ready 16:9 canvas.\n\nTo begin, please tell me: **1. What is your Primary Headline?**"
+#                     }
+#                 ]
+#                 st.session_state.banner_step = 1
+#                 st.session_state.banner_inputs = {}
+#                 if "last_generated_banner" in st.session_state:
+#                     del st.session_state.last_generated_banner
+#                 if "last_generated_banner_pil" in st.session_state:
+#                     del st.session_state.last_generated_banner_pil
+#                 st.rerun()
+# 
+#         if btn_generate:
+#             with st.spinner("Collaborating with the visual artist engine (Nano Banana 2)..."):
+#                 # Load the uploaded file if present
+#                 uploaded_image = None
+#                 if "banner_headshot" in st.session_state and st.session_state.banner_headshot is not None:
+#                     try:
+#                         uploaded_image = Image.open(st.session_state.banner_headshot)
+#                     except Exception as img_err:
+#                         logger.error(f"Failed to open uploaded banner headshot: {img_err}")
+# 
+#                 # Generate banner using gemini-3.1-flash-image
+#                 banner_img = generate_banner_with_gemini(st.session_state.banner_inputs, uploaded_image)
+# 
+#                 # Check if fallback is required
+#                 if banner_img is None:
+#                     logger.warning("Gemini generation bypassed or failed. Executing fallback geometric canvas generator.")
+#                     banner_img = generate_fallback_banner(
+#                         st.session_state.banner_inputs.get("headline", "Professional"),
+#                         "Corporate Blue"
+#                     )
+# 
+#                 # Format to buffer for st.download_button
+#                 buf_banner = io.BytesIO()
+#                 banner_img.save(buf_banner, format="PNG")
+#                 byte_banner = buf_banner.getvalue()
+# 
+#                 # Add final confirmation block to conversation history
+#                 st.session_state.banner_messages.append({
+#                     "role": "assistant",
+#                     "content": "🎨 Your banner generation process is complete! The custom-designed 16:9 banner has been rendered below, outside the chat panel. Please scroll down to review and download your file."
+#                 })
+# 
+#                 # Keep active session state image bytes for rendering download button
+#                 st.session_state.last_generated_banner = byte_banner
+#                 st.session_state.last_generated_banner_pil = banner_img
+#                 st.rerun()
+# 
+#     # 3. Persistent Banner Display at the very bottom of Tab 3 (Fixes UI/UX layout)
+#     if "last_generated_banner_pil" in st.session_state:
+#         st.write("---")
+#         st.write("### 🖼️ Your Custom LinkedIn Banner")
+#         st.image(
+#             st.session_state.last_generated_banner_pil, 
+#             caption="Custom Banner (Scaled to LinkedIn standard 1584 x 396 px on a 16:9 crop-ready canvas)", 
+#             width="stretch"
+#         )
+# 
+#         # Download button
+#         st.download_button(
+#             label="📥 Download LinkedIn Banner Image (PNG)",
+#             data=st.session_state.last_generated_banner,
+#             file_name="linkedin_custom_banner_16_9.png",
+#             mime="image/png"
+#         )
