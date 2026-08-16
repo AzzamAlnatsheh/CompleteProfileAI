@@ -517,9 +517,19 @@ with tab1:
                 st.session_state.summary = s_out
                 st.session_state.keywords = k_out
 
-        # Visually distinct, high-fidelity LinkedIn Profile mockup card
+        # Initialize session state for the headline if it doesn't exist
+        if "headline" not in st.session_state:
+            st.session_state.headline = ""
+        
+        # Render the visually distinct LinkedIn Profile mockup card
         with st.container(border=True):
-            # Render a blue gradient banner background and placeholder avatar bubble
+            # Fetch headline from session state or use placeholder text
+            headline_text = (
+                st.session_state.headline 
+                if st.session_state.headline 
+                else "Your optimized professional headline will appear here..."
+            )
+            
             st.markdown(
                 f"""
                 <!-- Top Blue Gradient Banner -->
