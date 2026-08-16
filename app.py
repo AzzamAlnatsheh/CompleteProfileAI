@@ -4,7 +4,7 @@ CompleteProfile AI - Streamlit Edition (Production-Grade Portfolio Version)
 An all-in-one digital career assistant that helps job seekers build fully
 optimized LinkedIn profiles from scratch using Streamlit, OpenAI, and BiRefNet.
 
-Author: Azzam Alnatsheh
+Author: Azzam Alnatsheh (aalnatsheh@npc.qa)
 License: MIT
 """
 
@@ -455,27 +455,61 @@ def process_headshot(image, bg_type, gradient_preset, solid_color):
 # --- STREAMLIT UI DESIGN ---
 st.set_page_config(page_title="CompleteProfile AI", layout="wide")
 
+# Inject subtle CSS styling to give the app a highly polished corporate appearance
+st.markdown(
+    """
+    <style>
+    /* Styling headers, tabs, and buttons for a modern corporate layout */
+    .stButton > button {
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        transition: all 0.2s ease;
+    }
+    .stButton > button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 6px rgba(59, 130, 246, 0.15);
+    }
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 16px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        background-color: transparent !important;
+        font-size: 15px !important;
+        padding: 8px 16px !important;
+        border-radius: 6px !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 st.title("💼 CompleteProfile AI")
 st.write("### Your All-in-One Digital Career & LinkedIn Optimizer")
 
 tab1, tab2, tab3 = st.tabs(["✍️ AI Career Journalist", "🖼️ Instant Studio Headshot", "🎨 Context-Aware Banner"])
 
 with tab1:
-    st.write("### 1. Tell us your career story")
     col1, col2 = st.columns(2)
     with col1:
-        industry = st.selectbox(
-            "Your Target Industry Focus",
-            ["Tech & Software", "Finance & Corporate", "Creative Design"],
-            key="text_industry"
-        )
-        role = st.text_input("What is your Target Role?", placeholder="e.g., Junior Product Manager")
-        skills = st.text_input("Core Skills (separated by commas)")
-        achievement = st.text_area("What is one major professional/academic accomplishment?")
-        style = st.selectbox("Working Style Preset", ["Professional & Direct", "Creative & Innovative", "Warm & Collaborative"])
-        btn = st.button("Generate Professional Copy", type="primary")
+        st.write("### 📝 Step 1: Input Your Story")
+        st.write("Complete this quick interactive form. Our AI will translate your answers into keyword-rich, impact-driven summaries.")
+        
+        with st.container(border=True):
+            industry = st.selectbox(
+                "Your Target Industry Focus",
+                ["Tech & Software", "Finance & Corporate", "Creative Design"],
+                key="text_industry"
+            )
+            role = st.text_input("What is your Target Role?", placeholder="e.g., Junior Product Manager")
+            skills = st.text_input("Core Skills / Technologies (separated by commas)")
+            achievement = st.text_area("What is one major professional/academic accomplishment?", height=110)
+            style = st.selectbox("Working Style Preset", ["Professional & Direct", "Creative & Innovative", "Warm & Collaborative"])
+            btn = st.button("Generate Professional Copy", type="primary", use_container_width=True)
 
     with col2:
+        st.write("### ✨ Step 2: Live Profile Preview")
+        st.write("Review how your generated text elements seamlessly display in context before copying them to your clipboard.")
+        
         if btn:
             with st.spinner("Writing optimized content..."):
                 h_out, s_out, k_out = optimize_linkedin_text(role, skills, achievement, style, industry)
@@ -483,56 +517,93 @@ with tab1:
                 st.session_state.summary = s_out
                 st.session_state.keywords = k_out
 
-        # Elements pull from session state so data does not vanish when changing parameters/tabs
-        st.text_input("Optimized LinkedIn Headline", value=st.session_state.headline)
-        st.text_area("LinkedIn 'About' Summary", value=st.session_state.summary, height=250)
-        st.multiselect("Extracted SEO Keywords", options=st.session_state.keywords, default=st.session_state.keywords)
+        # Visually distinct, high-fidelity LinkedIn Profile mockup card
+        with st.container(border=True):
+            # Render a blue gradient banner background and placeholder avatar bubble
+            st.markdown(
+                f"""
+                <div style="background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 100%); height: 80px; border-radius: 8px 8px 0 0; margin: -16px -16px 16px -16px;"></div>
+                <div style="display: flex; align-items: center; margin-top: -50px; margin-left: 16px;">
+                    <div style="background-color: #f1f5f9; border: 4px solid white; border-radius: 50%; width: 75px; height: 75px; display: flex; align-items: center; justify-content: center; font-size: 32px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">👤</div>
+                </div>
+                <div style="padding-top: 10px;">
+                    <h4 style="margin: 0; color: #0f172a; font-family: system-ui, sans-serif;">Your Profile Name</h4>
+                    <p style="font-size: 14px; font-weight: 500; color: #334155; margin: 8px 0 12px 0; line-height: 1.4; padding: 10px 14px; background-color: #f8fafc; border-radius: 8px; border-left: 4px solid #2563eb; font-family: system-ui, sans-serif;">
+                        {st.session_state.headline if st.session_state.headline else "Your optimized professional headline will appear here..."}
+                    </p>
+                    <p style="font-size: 12px; color: #64748b; margin: 0; font-family: system-ui, sans-serif;">Doha, Qatar • <span style="color: #2563eb; font-weight: 600; cursor: pointer;">Contact info</span></p>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        # Separate text area block specifically for summary copying
+        st.write("### 📄 About Section Copy")
+        with st.container(border=True):
+            st.text_area(
+                "Copy your LinkedIn 'About' Summary:", 
+                value=st.session_state.summary, 
+                placeholder="Once generated, copy this text into your LinkedIn 'About' summary slot...",
+                height=150,
+                disabled=False
+            )
+            st.multiselect("Extracted SEO Keywords", options=st.session_state.keywords, default=st.session_state.keywords, disabled=True)
 
 with tab2:
-    st.write("### 2. Instant Studio Backdrop Editor")
     col1, col2 = st.columns(2)
     with col1:
-        uploaded_file = st.file_uploader("Upload Casual Headshot", type=["jpg", "png", "jpeg"])
-        bg_type = st.radio("Backdrop Type", ["Transparent", "Solid Color", "Gradient Studio Backdrop"])
+        st.write("### 📸 Portrait Settings")
+        st.write("Upload a standard portrait or casual selfie. The AI will strip away background clutter and replace it with a studio finish.")
+        
+        with st.container(border=True):
+            uploaded_file = st.file_uploader("Upload Casual Headshot", type=["jpg", "png", "jpeg"])
+            bg_type = st.radio("Backdrop Type", ["Transparent", "Solid Color", "Gradient Studio Backdrop"])
 
-        if bg_type == "Solid Color":
-            solid_color = st.color_picker("Pick a background color", "#1E3A8A")
-            gradient_style = None
-        elif bg_type == "Gradient Studio Backdrop":
-            gradient_style = st.selectbox("Select Gradient Preset", ["Neutral Charcoal Glow", "Corporate Navy Glow", "Modern Teal Glow"])
-            solid_color = None
-        else:
-            solid_color = None
-            gradient_style = None
+            if bg_type == "Solid Color":
+                solid_color = st.color_picker("Pick a background color", "#1E3A8A")
+                gradient_style = None
+            elif bg_type == "Gradient Studio Backdrop":
+                gradient_style = st.selectbox("Select Gradient Preset", ["Neutral Charcoal Glow", "Corporate Navy Glow", "Modern Teal Glow"])
+                solid_color = None
+            else:
+                solid_color = None
+                gradient_style = None
 
-        process_btn = st.button("Process Studio Portrait", type="primary")
+            process_btn = st.button("Process Studio Portrait", type="primary", use_container_width=True)
 
     with col2:
-        if uploaded_file and process_btn:
-            with st.spinner("Extracting background with AI..."):
-                input_img = Image.open(uploaded_file)
-                output_img = process_headshot(input_img, bg_type, gradient_style, solid_color)
+        st.write("### 🖼️ Studio Preview")
+        st.write("Your newly extracted and compiled professional headshot picture will render below.")
+        
+        with st.container(border=True):
+            if uploaded_file and process_btn:
+                with st.spinner("Extracting background with AI..."):
+                    input_img = Image.open(uploaded_file)
+                    output_img = process_headshot(input_img, bg_type, gradient_style, solid_color)
 
-                if output_img:
-                    st.image(output_img, caption="Your New Studio Profile Picture", width=400)
+                    if output_img:
+                        st.image(output_img, caption="Your New Studio Profile Picture", width=380)
 
-                    # Convert canvas asset into dynamic download buffer
-                    buf = io.BytesIO()
+                        # Convert canvas asset into dynamic download buffer
+                        buf = io.BytesIO()
 
-                    # Dynamically set format based on transparency option
-                    img_format = "PNG" if bg_type == "Transparent" else "JPEG"
-                    file_ext = "png" if bg_type == "Transparent" else "jpg"
-                    mime_type = "image/png" if bg_type == "Transparent" else "image/jpeg"
+                        # Dynamically set format based on transparency option
+                        img_format = "PNG" if bg_type == "Transparent" else "JPEG"
+                        file_ext = "png" if bg_type == "Transparent" else "jpg"
+                        mime_type = "image/png" if bg_type == "Transparent" else "image/jpeg"
 
-                    output_img.save(buf, format=img_format)
-                    byte_im = buf.getvalue()
+                        output_img.save(buf, format=img_format)
+                        byte_im = buf.getvalue()
 
-                    st.download_button(
-                        label="📥 Download Profile Image",
-                        data=byte_im,
-                        file_name=f"linkedin_headshot.{file_ext}",
-                        mime=mime_type
-                    )
+                        st.download_button(
+                            label="📥 Download Profile Image",
+                            data=byte_im,
+                            file_name=f"linkedin_headshot.{file_ext}",
+                            mime=mime_type,
+                            use_container_width=True
+                        )
+            else:
+                st.info("Upload an image and click 'Process Studio Portrait' on the left to activate your preview.")
 
 # --- REVERTED TAB 3: 100% Free Procedural Banner Generator ---
 with tab3:
@@ -541,43 +612,50 @@ with tab3:
 
     col1, col2 = st.columns(2)
     with col1:
-        input_industry = st.selectbox(
-            "Your Target Industry Focus", 
-            ["Tech & Software", "Finance & Corporate", "Creative Design", "Healthcare", "Education & Non-Profit"],
-            key="banner_industry_reverted"
-        )
-        input_palette = st.radio(
-            "Brand Palette Style", 
-            ["Corporate Blue", "Creative Teal", "Tech Slate", "Creative Amber"],
-            key="banner_palette_reverted"
-        )
-        btn_banner = st.button("Generate Custom Banner", type="primary")
+        st.write("### ⚙️ Configuration")
+        with st.container(border=True):
+            input_industry = st.selectbox(
+                "Your Target Industry Focus", 
+                ["Tech & Software", "Finance & Corporate", "Creative Design", "Healthcare", "Education & Non-Profit"],
+                key="banner_industry_reverted"
+            )
+            input_palette = st.radio(
+                "Brand Palette Style", 
+                ["Corporate Blue", "Creative Teal", "Tech Slate", "Creative Amber"],
+                key="banner_palette_reverted"
+            )
+            btn_banner = st.button("Generate Custom Banner", type="primary", use_container_width=True)
 
     with col2:
-        if btn_banner:
-            with st.spinner("Rendering your professional abstract banner..."):
-                # Run the standard geometric PIL renderer directly - completely free and offline
-                banner_img = generate_fallback_banner(input_industry, input_palette)
+        st.write("### ✨ Rendered LinkedIn Banner")
+        with st.container(border=True):
+            if btn_banner:
+                with st.spinner("Rendering your professional abstract banner..."):
+                    # Run the standard geometric PIL renderer directly - completely free and offline
+                    banner_img = generate_fallback_banner(input_industry, input_palette)
 
-                # Format to buffer for st.download_button
-                buf_banner = io.BytesIO()
-                banner_img.save(buf_banner, format="PNG")
-                byte_banner = buf_banner.getvalue()
+                    # Format to buffer for st.download_button
+                    buf_banner = io.BytesIO()
+                    banner_img.save(buf_banner, format="PNG")
+                    byte_banner = buf_banner.getvalue()
 
-                # Render output image
-                st.image(
-                    banner_img, 
-                    caption=f"Custom {input_industry} Banner (Standard LinkedIn 1584 x 396 px)", 
-                    use_container_width=True
-                )
+                    # Render output image
+                    st.image(
+                        banner_img, 
+                        caption=f"Custom {input_industry} Banner (Standard LinkedIn 1584 x 396 px)", 
+                        use_container_width=True
+                    )
 
-                # Render download button
-                st.download_button(
-                    label="📥 Download LinkedIn Banner Image (PNG)",
-                    data=byte_banner,
-                    file_name="linkedin_custom_banner.png",
-                    mime="image/png"
-                )
+                    # Render download button
+                    st.download_button(
+                        label="📥 Download LinkedIn Banner Image (PNG)",
+                        data=byte_banner,
+                        file_name="linkedin_custom_banner.png",
+                        mime="image/png",
+                        use_container_width=True
+                    )
+            else:
+                st.info("Configure your target style and click 'Generate Custom Banner' on the left to render your asset.")
 
 # =========================================================================
 # FUTURE INTERACTIVE CHATBOT LAYOUT (Commented until activated)
