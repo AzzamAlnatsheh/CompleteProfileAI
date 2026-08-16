@@ -152,9 +152,10 @@ def create_gradient_backdrop(style="neutral_gray", size=(1024, 1024)):
 
     for y in range(height):
         ratio = y / height
+        # FIXED: Correctly added slice indexing [1] and [2] for Green and Blue channels
         r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-        g = int(color1 * (1 - ratio) + color2 * ratio)
-        b = int(color1 * (1 - ratio) + color2 * ratio)
+        g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
+        b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
         for x in range(width):
             base.putpixel((x, y), (r, g, b))
     return base
@@ -174,9 +175,10 @@ def generate_fallback_banner(industry, color_palette_name):
     c1, c2, c3 = colors
     for y in range(396):
         ratio = y / 396
+        # FIXED: Correctly added slice indexing [1] and [2] for Green and Blue channels to prevent tuple sequence multiplying error
         r = int(c1[0] * (1 - ratio) + c2[0] * ratio)
-        g = int(c1 * (1 - ratio) + c2 * ratio)
-        b = int(c1 * (1 - ratio) + c2 * ratio)
+        g = int(c1[1] * (1 - ratio) + c2[1] * ratio)
+        b = int(c1[2] * (1 - ratio) + c2[2] * ratio)
         draw.line([(0, y), (1584, y)], fill=(r, g, b))
 
     random.seed(hash(industry))
