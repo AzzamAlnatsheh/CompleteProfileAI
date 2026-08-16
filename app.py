@@ -517,38 +517,20 @@ with tab1:
                 st.session_state.summary = s_out
                 st.session_state.keywords = k_out
 
-        # Initialize session state for the headline if it doesn't exist
-        if "headline" not in st.session_state:
-            st.session_state.headline = ""
-        
-        # Render the visually distinct LinkedIn Profile mockup card
+        # Visually distinct, high-fidelity LinkedIn Profile mockup card
         with st.container(border=True):
-            # Fetch headline from session state or use placeholder text
-            headline_text = (
-                st.session_state.headline 
-                if st.session_state.headline 
-                else "Your optimized professional headline will appear here..."
-            )
-            
+            # Render a blue gradient banner background and placeholder avatar bubble
             st.markdown(
                 f"""
-                <!-- Top Blue Gradient Banner -->
                 <div style="background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 100%); height: 80px; border-radius: 8px 8px 0 0; margin: -16px -16px 16px -16px;"></div>
-                
-                <!-- White Bottom Section -->
-                <div style="background-color: #ffffff; margin: 0 -16px -16px -16px; padding: 0 16px 16px 16px; border-radius: 0 0 8px 8px;">
-                    <!-- Avatar Bubble -->
-                    <div style="display: flex; align-items: center; margin-top: -50px; margin-left: 0px;">
-                        <div style="background-color: #f1f5f9; border: 4px solid white; border-radius: 50%; width: 75px; height: 75px; display: flex; align-items: center; justify-content: center; font-size: 32px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">👤</div>
-                    </div>
-                    
-                    <!-- Profile Info Block -->
-                    <div style="padding-top: 10px;">
-                        <h4 style="margin: 0; color: #0f172a; font-family: system-ui, sans-serif;">Your Profile Name</h4>
-                        <p style="font-size: 14px; font-weight: 500; color: #334155; margin: 8px 0 0 0; line-height: 1.4; padding: 10px 14px; background-color: #f8fafc; border-radius: 8px; border-left: 4px solid #2563eb; font-family: system-ui, sans-serif;">
-                            {headline_text}
-                        </p>
-                    </div>
+                <div style="display: flex; align-items: center; margin-top: -50px; margin-left: 16px;">
+                    <div style="background-color: #ffffff; border: 4px solid white; border-radius: 50%; width: 75px; height: 75px; display: flex; align-items: center; justify-content: center; font-size: 32px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">👤</div>
+                </div>
+                <div style="padding-top: 10px;">
+                    <h4 style="margin: 0; color: #0f172a; font-family: system-ui, sans-serif;">Your Profile Name</h4>
+                    <p style="font-size: 14px; font-weight: 500; color: #334155; margin: 8px 0 12px 0; line-height: 1.4; padding: 10px 14px; background-color: #f8fafc; border-radius: 8px; border-left: 4px solid #2563eb; font-family: system-ui, sans-serif;">
+                        {st.session_state.headline if st.session_state.headline else "Your optimized professional headline will appear here..."}
+                    </p>
                 </div>
                 """,
                 unsafe_allow_html=True
